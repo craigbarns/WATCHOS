@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createProduct, type ProductFormInput } from '@/app/actions/products'
-import { formatEuro } from '@/lib/format'
+import { formatEuro, toHT } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const EMPTY: ProductFormInput = {
@@ -62,7 +62,8 @@ function ProductForm({ onClose, onCreated }: { onClose: () => void; onCreated?: 
 
   const purchase = Number(values.purchase_price_ttc || 0)
   const selling = Number(values.selling_price_ttc || 0)
-  const margin = purchase > 0 && selling > 0 ? selling - purchase : null
+  const vatRate = Number(values.vat_rate)
+  const margin = purchase > 0 && selling > 0 ? toHT(selling, vatRate) - toHT(purchase, vatRate) : null
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -173,9 +174,11 @@ function ProductForm({ onClose, onCreated }: { onClose: () => void; onCreated?: 
       <div className="grid grid-cols-3 gap-3 rounded-lg border p-3">
         <Field label="Prix d'achat TTC" id="purchase_price_ttc">
           <Input id="purchase_price_ttc" type="number" min={0} step="0.01" value={(values.purchase_price_ttc as number | undefined) ?? ''} onChange={set('purchase_price_ttc')} />
+          <span className="text-xs text-muted-foreground tabular-nums">{purchase > 0 ? `${formatEuro(toHT(purchase, vatRate))} HT` : '\u00a0'}</span>
         </Field>
         <Field label="Prix de vente TTC *" id="selling_price_ttc">
           <Input id="selling_price_ttc" type="number" min={0.01} step="0.01" required value={(values.selling_price_ttc as number) || ''} onChange={set('selling_price_ttc')} />
+          <span className="text-xs text-muted-foreground tabular-nums">{selling > 0 ? `${formatEuro(toHT(selling, vatRate))} HT` : '\u00a0'}</span>
         </Field>
         <Field label="TVA" id="vat_rate">
           <select id="vat_rate" value={values.vat_rate as number} onChange={set('vat_rate')} className={selectClass}>
@@ -187,7 +190,7 @@ function ProductForm({ onClose, onCreated }: { onClose: () => void; onCreated?: 
         </Field>
         {margin !== null && (
           <p className={cn('col-span-3 text-xs', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-destructive')}>
-            Marge brute : {formatEuro(margin)} ({((margin / selling) * 100).toFixed(1)} % du prix de vente)
+            Marge brute HT : {formatEuro(margin)} ({((margin / toHT(selling, vatRate)) * 100).toFixed(1)} % du prix de vente HT)
           </p>
         )}
       </div>

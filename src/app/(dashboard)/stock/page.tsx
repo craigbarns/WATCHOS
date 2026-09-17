@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Search, Plus } from 'lucide-react'
 import { ProductFormDialog } from '@/components/stock/product-form-dialog'
-import { formatEuro, ITEM_STATUS } from '@/lib/format'
+import { formatEuro, ITEM_STATUS, toHT } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 type StockRow = {
@@ -22,6 +22,7 @@ type StockRow = {
   quantity: number
   price: number
   cost: number | null
+  vatRate: number
   status: string
 }
 
@@ -33,6 +34,7 @@ type ProductRow = {
   reference: string | null
   selling_price_ttc: number
   purchase_price_ttc: number | null
+  vat_rate: number
   stock_quantity: number
   condition: string | null
   serialized_items: Array<{ id: string; serial_number: string; status: string; year: string | null; has_box: boolean; has_papers: boolean }>
@@ -41,7 +43,7 @@ type ProductRow = {
 async function loadStock(): Promise<StockRow[]> {
     const { data } = await createClient()
       .from('products')
-      .select('id, type, brand, model, reference, selling_price_ttc, purchase_price_ttc, stock_quantity, condition, serialized_items(id, serial_number, status, year, has_box, has_papers)')
+      .select('id, type, brand, model, reference, selling_price_ttc, purchase_price_ttc, vat_rate, stock_quantity, condition, serialized_items(id, serial_number, status, year, has_box, has_papers)')
       .order('brand')
 
     const rows: StockRow[] = []
@@ -59,6 +61,7 @@ async function loadStock(): Promise<StockRow[]> {
             quantity: s.status === 'AVAILABLE' ? 1 : 0,
             price: Number(p.selling_price_ttc),
             cost: p.purchase_price_ttc === null ? null : Number(p.purchase_price_ttc),
+            vatRate: Number(p.vat_rate),
             status: s.status,
           })
         }
@@ -74,6 +77,7 @@ async function loadStock(): Promise<StockRow[]> {
           quantity: p.stock_quantity,
           price: Number(p.selling_price_ttc),
           cost: p.purchase_price_ttc === null ? null : Number(p.purchase_price_ttc),
+            vatRate: Number(p.vat_rate),
           status: p.stock_quantity > 0 ? 'AVAILABLE' : 'SOLD',
         })
       }
@@ -122,6 +126,7 @@ export default function StockPage() {
   }, [items, search, filter])
 
   const totalValue = filteredItems.reduce((s, i) => s + i.price * i.quantity, 0)
+  const totalValueHT = filteredItems.reduce((s, i) => s + toHT(i.price, i.vatRate) * i.quantity, 0)
 
   return (
     <div className="space-y-6">
@@ -129,7 +134,7 @@ export default function StockPage() {
         <div>
           <h1 className="font-playfair text-3xl font-bold tracking-tight">Stock</h1>
           <p className="text-sm text-muted-foreground">
-            {filteredItems.length} article(s) · valeur {formatEuro(totalValue)}
+            {filteredItems.length} article(s) · valeur {formatEuro(totalValueHT)} HT · {formatEuro(totalValue)} TTC
           </p>
         </div>
         <Button onClick={() => setDialogOpen(true)} className="h-9">
@@ -173,19 +178,20 @@ export default function StockPage() {
                 <TableHead>Référence</TableHead>
                 <TableHead>N° série</TableHead>
                 <TableHead className="text-right">Qté</TableHead>
+                <TableHead className="text-right">Prix HT</TableHead>
                 <TableHead className="text-right">Prix TTC</TableHead>
-                <TableHead className="text-right">Marge</TableHead>
+                <TableHead className="text-right">Marge HT</TableHead>
                 <TableHead className="pr-4">Statut</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Chargement du stock…</TableCell>
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Chargement du stock…</TableCell>
                 </TableRow>
               ) : filteredItems.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Aucun article trouvé</TableCell>
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">Aucun article trouvé</TableCell>
                 </TableRow>
               ) : (
                 filteredItems.map((item) => (
@@ -199,9 +205,10 @@ export default function StockPage() {
                     <TableCell>{item.ref}</TableCell>
                     <TableCell className="font-mono text-xs">{item.serial ?? '—'}</TableCell>
                     <TableCell className="text-right tabular-nums">{item.quantity}</TableCell>
-                    <TableCell className="text-right tabular-nums">{formatEuro(item.price)}</TableCell>
+                    <TableCell className="text-right text-muted-foreground tabular-nums">{formatEuro(toHT(item.price, item.vatRate))}</TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">{formatEuro(item.price)}</TableCell>
                     <TableCell className="text-right text-muted-foreground tabular-nums">
-                      {item.cost === null ? '—' : formatEuro(item.price - item.cost)}
+                      {item.cost === null ? '—' : formatEuro(toHT(item.price, item.vatRate) - toHT(item.cost, item.vatRate))}
                     </TableCell>
                     <TableCell className="pr-4">
                       <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', ITEM_STATUS[item.status]?.className)}>

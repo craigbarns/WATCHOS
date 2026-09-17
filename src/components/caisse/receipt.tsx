@@ -1,8 +1,8 @@
 import type { ReceiptData } from '@/app/actions/caisse'
 import { formatDateTime, formatEuro, PAYMENT_LABELS } from '@/lib/format'
 
-/** Ticket de caisse au format 80 mm (imprimable via window.print). */
-export function Receipt({ receipt }: { receipt: ReceiptData }) {
+/** Ticket de caisse pour imprimante thermique (80 / 58 mm), imprimé via printElement. */
+export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; duplicate?: boolean }) {
   const vatBreakdown = new Map<number, { ht: number; ttc: number }>()
   for (const line of receipt.lines) {
     const ht = line.total_ht ?? line.total_ttc / (1 + line.vat_rate / 100)
@@ -23,6 +23,9 @@ export function Receipt({ receipt }: { receipt: ReceiptData }) {
         {receipt.store?.vat_number && <div>TVA {receipt.store.vat_number}</div>}
       </div>
 
+      {duplicate && (
+        <div className="mt-2 border-2 border-black py-0.5 text-center text-sm font-bold tracking-[0.3em]">DUPLICATA</div>
+      )}
       <div className="my-2 border-t border-dashed border-black" />
       <div className="flex justify-between">
         <span>Ticket {receipt.receipt_number}</span>

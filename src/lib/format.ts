@@ -4,6 +4,11 @@ export function formatEuro(value: number | string | null | undefined): string {
   return euroFormatter.format(Number(value ?? 0))
 }
 
+/** Montant HT arrondi au centime, calculé comme en base : round(TTC / (1 + taux)) */
+export function toHT(ttc: number, vatRate: number): number {
+  return Math.round((ttc / (1 + vatRate / 100)) * 100) / 100
+}
+
 export function formatDateTime(value: string | Date): string {
   return new Date(value).toLocaleString('fr-FR', {
     timeZone: 'Europe/Paris',

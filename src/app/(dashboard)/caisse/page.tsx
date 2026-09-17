@@ -4,18 +4,17 @@ import { useEffect, useRef, useState, useTransition } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   Search, UserPlus, ShoppingCart, Trash2, CreditCard, Banknote, Landmark, FileSignature, CircleDollarSign,
-  Minus, Plus, X, Printer, Percent, User, CheckCircle2, Loader2, Watch,
+  Minus, Plus, X, Percent, User, Loader2, Watch,
 } from 'lucide-react'
 import {
-  finalizeSale, getReceipt, searchCatalog, searchCustomers,
-  type CatalogItem, type CustomerSummary, type PaymentInput, type PaymentMethod, type ReceiptData,
+  finalizeSale, searchCatalog, searchCustomers,
+  type CatalogItem, type CustomerSummary, type PaymentInput, type PaymentMethod,
 } from '@/app/actions/caisse'
 import { CustomerFormDialog } from '@/components/shared/customer-form-dialog'
-import { Receipt } from '@/components/caisse/receipt'
-import { formatEuro, PAYMENT_LABELS } from '@/lib/format'
+import { ReceiptDialog } from '@/components/caisse/receipt-dialog'
+import { formatEuro, PAYMENT_LABELS, toHT } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 type CartLine = CatalogItem & { quantity: number; discount: number }
@@ -69,11 +68,13 @@ export default function CaissePage() {
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false)
 
   // --- Ticket
-  const [receipt, setReceipt] = useState<ReceiptData | null>(null)
+  const [lastSaleId, setLastSaleId] = useState<string | null>(null)
 
   const subtotal = cents(cart.reduce((s, l) => s + l.price_ttc * l.quantity, 0))
   const totalDiscount = cents(cart.reduce((s, l) => s + l.discount, 0))
   const totalTTC = cents(subtotal - totalDiscount)
+  const totalHT = cents(cart.reduce((s, l) => s + toHT(l.price_ttc * l.quantity - l.discount, l.vat_rate), 0))
+  const totalVAT = cents(totalTTC - totalHT)
   const totalPaid = cents(payments.reduce((s, p) => s + p.amount, 0))
   const remaining = cents(totalTTC - totalPaid)
 
@@ -162,7 +163,7 @@ export default function CaissePage() {
     setCashReceived(null)
     setAmountInput('')
     setError(null)
-    setReceipt(null)
+    setLastSaleId(null)
     searchRef.current?.focus()
   }
 
@@ -185,9 +186,7 @@ export default function CaissePage() {
         setError(result.error)
         return
       }
-      const data = await getReceipt(result.data.sale_id)
-      if (data) setReceipt(data)
-      else resetSale()
+      setLastSaleId(result.data.sale_id)
       setResults({ query: debouncedQuery, items: await searchCatalog(debouncedQuery) })
     })
   }
@@ -273,7 +272,10 @@ export default function CaissePage() {
                           {item.details && ` · ${item.details}`}
                         </div>
                       </div>
-                      <div className="text-sm font-semibold tabular-nums">{formatEuro(item.price_ttc)}</div>
+                      <div className="text-right tabular-nums">
+                        <div className="text-sm font-semibold">{formatEuro(item.price_ttc)} <span className="text-[10px] font-normal text-muted-foreground">TTC</span></div>
+                        <div className="text-xs text-muted-foreground">{formatEuro(toHT(item.price_ttc, item.vat_rate))} HT</div>
+                      </div>
                     </button>
                   )
                 })}
@@ -311,7 +313,7 @@ export default function CaissePage() {
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
                         {line.serial_number && <span className="font-mono">S/N {line.serial_number} · </span>}
-                        {formatEuro(line.price_ttc)} TTC · TVA {line.vat_rate} %
+                        {formatEuro(toHT(line.price_ttc, line.vat_rate))} HT · {formatEuro(line.price_ttc)} TTC · TVA {line.vat_rate} %
                       </div>
                     </div>
 
@@ -344,7 +346,8 @@ export default function CaissePage() {
                       {line.discount > 0 && (
                         <div className="text-xs text-muted-foreground line-through">{formatEuro(line.price_ttc * line.quantity)}</div>
                       )}
-                      <div className="font-semibold">{formatEuro(line.price_ttc * line.quantity - line.discount)}</div>
+                      <div className="font-semibold">{formatEuro(line.price_ttc * line.quantity - line.discount)} <span className="text-[10px] font-normal text-muted-foreground">TTC</span></div>
+                      <div className="text-xs text-muted-foreground">{formatEuro(toHT(line.price_ttc * line.quantity - line.discount, line.vat_rate))} HT</div>
                     </div>
 
                     <Button
@@ -368,7 +371,7 @@ export default function CaissePage() {
             {totalDiscount > 0 && (
               <>
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Sous-total</span>
+                  <span>Sous-total TTC</span>
                   <span className="tabular-nums">{formatEuro(subtotal)}</span>
                 </div>
                 <div className="flex justify-between text-sm text-emerald-700 dark:text-emerald-400">
@@ -377,6 +380,14 @@ export default function CaissePage() {
                 </div>
               </>
             )}
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>Total HT</span>
+              <span className="tabular-nums">{formatEuro(totalHT)}</span>
+            </div>
+            <div className="flex justify-between text-sm text-muted-foreground">
+              <span>TVA</span>
+              <span className="tabular-nums">{formatEuro(totalVAT)}</span>
+            </div>
             <div className="flex items-baseline justify-between text-2xl font-bold">
               <span className="font-playfair">Total TTC</span>
               <span className="tabular-nums">{formatEuro(totalTTC)}</span>
@@ -547,28 +558,7 @@ export default function CaissePage() {
         }}
       />
 
-      <Dialog open={receipt !== null} onOpenChange={(open) => !open && resetSale()}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-lg">
-              <CheckCircle2 className="size-5 text-emerald-600" /> Vente validée
-            </DialogTitle>
-          </DialogHeader>
-          {receipt && (
-            <div className="rounded-lg border">
-              <Receipt receipt={receipt} />
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer /> Imprimer
-            </Button>
-            <Button onClick={resetSale} autoFocus>
-              Nouvelle vente
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ReceiptDialog saleId={lastSaleId} onClose={resetSale} closeLabel="Nouvelle vente" />
     </div>
   )
 }

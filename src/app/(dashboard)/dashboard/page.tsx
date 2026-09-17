@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { formatDateTime, formatEuro, parisDay, parisDayStartISO, SAV_CLOSED_STATUSES, SAV_STATUS } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { ReprintButton } from '@/components/caisse/receipt-dialog'
 
 type RecentSale = {
   id: string
@@ -32,8 +33,8 @@ export default async function DashboardPage() {
   const monthStart = parisDayStartISO(`${today.slice(0, 8)}01`)
 
   const [todaySales, monthSales, openSav, serializedStock, accessoryStock, recentSales, recentSav] = await Promise.all([
-    supabase.from('sales').select('total_ttc').eq('status', 'FINALIZED').gte('finalized_at', todayStart),
-    supabase.from('sales').select('total_ttc').eq('status', 'FINALIZED').gte('finalized_at', monthStart),
+    supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', todayStart),
+    supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', monthStart),
     supabase.from('sav_cases').select('id', { count: 'exact', head: true }).not('status', 'in', `(${SAV_CLOSED_STATUSES.join(',')})`),
     supabase.from('serialized_items').select('product:products(selling_price_ttc, purchase_price_ttc)').eq('status', 'AVAILABLE'),
     supabase.from('products').select('stock_quantity, selling_price_ttc, purchase_price_ttc').eq('type', 'NON_SERIALIZED').gt('stock_quantity', 0),
@@ -51,6 +52,7 @@ export default async function DashboardPage() {
   ])
 
   const sum = (rows: Array<{ total_ttc: number }> | null) => (rows ?? []).reduce((s, r) => s + Number(r.total_ttc), 0)
+  const sumHT = (rows: Array<{ total_ht: number }> | null) => (rows ?? []).reduce((s, r) => s + Number(r.total_ht), 0)
   const caToday = sum(todaySales.data)
   const salesCount = todaySales.data?.length ?? 0
   const basket = salesCount ? caToday / salesCount : 0
@@ -65,12 +67,17 @@ export default async function DashboardPage() {
     (accessoryStock.data ?? []).reduce((s, p) => s + p.stock_quantity * Number(p.purchase_price_ttc ?? 0), 0)
 
   const kpis = [
-    { title: "CA aujourd'hui", value: formatEuro(caToday), hint: `Mois en cours : ${formatEuro(sum(monthSales.data))}`, icon: Euro },
+    {
+      title: "CA aujourd'hui (TTC)",
+      value: formatEuro(caToday),
+      hint: `${formatEuro(sumHT(todaySales.data))} HT · mois : ${formatEuro(sumHT(monthSales.data))} HT / ${formatEuro(sum(monthSales.data))} TTC`,
+      icon: Euro,
+    },
     { title: "Ventes aujourd'hui", value: String(salesCount), hint: salesCount ? `Panier moyen : ${formatEuro(basket)}` : 'Aucune vente', icon: ShoppingBag },
     { title: 'SAV en cours', value: String(openSav.count ?? 0), hint: 'Dossiers non restitués', icon: Wrench },
     {
       title: 'Valeur du stock',
-      value: formatEuro(stockValue),
+      value: `${formatEuro(stockValue)} TTC`,
       hint: stockCost ? `Marge potentielle : ${formatEuro(stockValue - stockCost)}` : `${watches.length} montre(s) disponible(s)`,
       icon: Package,
     },
@@ -134,7 +141,10 @@ export default async function DashboardPage() {
                         {formatDateTime(sale.finalized_at)}
                       </div>
                     </div>
-                    <div className="font-semibold tabular-nums">{formatEuro(sale.total_ttc)}</div>
+                    <div className="flex items-center gap-1">
+                      <span className="font-semibold tabular-nums">{formatEuro(sale.total_ttc)}</span>
+                      <ReprintButton saleId={sale.id} />
+                    </div>
                   </li>
                 ))}
               </ul>

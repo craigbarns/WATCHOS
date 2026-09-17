@@ -129,35 +129,3 @@
     @apply font-sans;
   }
 }
-/* Impression du ticket de caisse : seule la zone .print-area est imprimée */
-@media print {
-  @page {
-    size: 80mm auto;
-    margin: 0;
-  }
-  body * {
-    visibility: hidden;
-  }
-  .print-area,
-  .print-area * {
-    visibility: visible;
-  }
-  .print-area {
-    position: fixed;
-    inset: 0 auto auto 0;
-    width: 80mm;
-  }
-}
-
-@media print {
-  .print-a5 {
-    width: 148mm;
-  }
-  @page a5 {
-    size: A5;
-    margin: 8mm;
-  }
-  .print-a5 {
-    page: a5;
-  }
-}

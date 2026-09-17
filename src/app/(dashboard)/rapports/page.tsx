@@ -7,6 +7,7 @@ import { getCurrentProfile } from '@/lib/auth'
 import { loadFiscalJournal } from '@/lib/fiscal/load'
 import { formatDate, formatDateTime, formatEuro, parisYesterday } from '@/lib/format'
 import { CloseDayForm } from '@/components/rapports/close-day-form'
+import { ReprintButton } from '@/components/caisse/receipt-dialog'
 
 export default async function RapportsPage() {
   const profile = await getCurrentProfile()
@@ -152,13 +153,14 @@ export default async function RapportsPage() {
                 <TableHead className="text-right">HT</TableHead>
                 <TableHead className="text-right">TVA</TableHead>
                 <TableHead className="text-right">TTC</TableHead>
-                <TableHead className="pr-4">Empreinte</TableHead>
+                <TableHead>Empreinte</TableHead>
+                <TableHead className="pr-4 text-right">Ticket</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {lastEvents.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
                     Aucune opération
                   </TableCell>
                 </TableRow>
@@ -171,7 +173,10 @@ export default async function RapportsPage() {
                     <TableCell className="text-right tabular-nums">{formatEuro(e.amount_ht)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatEuro(e.vat_amount)}</TableCell>
                     <TableCell className="text-right font-medium tabular-nums">{formatEuro(e.amount_ttc)}</TableCell>
-                    <TableCell className="pr-4 font-mono text-xs text-muted-foreground">{e.current_hash.slice(0, 12)}…</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{e.current_hash.slice(0, 12)}…</TableCell>
+                    <TableCell className="pr-4 text-right">
+                      {e.event_type === 'SALE' && <ReprintButton saleId={e.entity_id} />}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

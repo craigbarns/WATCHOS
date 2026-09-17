@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDate, formatDateTime } from '@/lib/format'
+import { printElement, type PaperFormat } from '@/lib/print'
+import { usePrinterPrefs } from '@/lib/printer-prefs'
 
 export type DepositSlipData = {
   case_number: string
@@ -25,6 +27,16 @@ export type DepositSlipData = {
 /** Bon de dépôt remis au client (format A5, deux exemplaires : client + boutique). */
 export function SavDepositSlipButton({ data }: { data: DepositSlipData }) {
   const [open, setOpen] = useState(false)
+  const [format, setFormat] = useState<'A5' | 'TICKET'>('A5')
+  const prefs = usePrinterPrefs()
+  const slipRef = useRef<HTMLDivElement>(null)
+
+  const print = () => {
+    const el = slipRef.current?.querySelector<HTMLElement>('.print-area')
+    const paper: PaperFormat = format === 'A5' ? 'A5' : prefs.paper
+    if (el) printElement(el, paper)
+  }
+
   return (
     <>
       <Button variant="outline" className="h-9" onClick={() => setOpen(true)}>
@@ -35,14 +47,23 @@ export function SavDepositSlipButton({ data }: { data: DepositSlipData }) {
           <DialogHeader>
             <DialogTitle className="text-lg">Bon de dépôt {data.case_number}</DialogTitle>
           </DialogHeader>
-          <div className="rounded-lg border">
+          <div ref={slipRef} className="rounded-lg border">
             <DepositSlip data={data} />
+          </div>
+          <div className="flex items-center gap-3 text-sm">
+            <span className="text-muted-foreground">Format :</span>
+            {(['A5', 'TICKET'] as const).map((f) => (
+              <label key={f} className="flex items-center gap-1.5">
+                <input type="radio" name="slip-format" checked={format === f} onChange={() => setFormat(f)} />
+                {f === 'A5' ? 'Feuille A5 (avec signatures)' : `Imprimante ticket (${prefs.paper})`}
+              </label>
+            ))}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Fermer
             </Button>
-            <Button onClick={() => window.print()}>
+            <Button onClick={print}>
               <Printer /> Imprimer
             </Button>
           </DialogFooter>
@@ -64,7 +85,7 @@ function DepositSlip({ data }: { data: DepositSlipData }) {
   ]
 
   return (
-    <div className="print-area print-a5 bg-white p-6 text-[12px] leading-relaxed text-black">
+    <div className="print-area bg-white p-6 text-[12px] leading-relaxed text-black">
       <div className="flex items-start justify-between border-b border-black pb-3">
         <div>
           <div className="font-playfair text-xl font-bold">{data.store?.store_name ?? 'Heure et Passion'}</div>
