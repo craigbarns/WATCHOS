@@ -1,9 +1,10 @@
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Euro, ShoppingBag, Wrench, Package, ArrowRight, ShieldCheck, TrendingUp } from 'lucide-react'
+import { Euro, ShoppingBag, Wrench, Package, ArrowRight, ShieldCheck, Watch, Users, Plus, Check, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { formatDateTime, formatEuro, parisDay, parisDayStartISO, SAV_CLOSED_STATUSES, SAV_STATUS } from '@/lib/format'
+import { EmptyState } from '@/components/shared/empty-state'
 import { cn } from '@/lib/utils'
 import { ReprintButton } from '@/components/caisse/receipt-dialog'
 
@@ -28,6 +29,7 @@ export default async function DashboardPage() {
   const supabase = await createClient()
   const profile = await getCurrentProfile()
 
+  const canSell = profile?.role === 'ADMIN' || profile?.role === 'VENDEUR'
   const today = parisDay()
   const todayStart = parisDayStartISO(today)
   const monthStart = parisDayStartISO(`${today.slice(0, 8)}01`)
@@ -36,8 +38,8 @@ export default async function DashboardPage() {
     supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', todayStart),
     supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', monthStart),
     supabase.from('sav_cases').select('id', { count: 'exact', head: true }).not('status', 'in', `(${SAV_CLOSED_STATUSES.join(',')})`),
-    supabase.from('serialized_items').select('product:products(selling_price_ttc, purchase_price_ttc)').eq('status', 'AVAILABLE'),
-    supabase.from('products').select('stock_quantity, selling_price_ttc, purchase_price_ttc').eq('type', 'NON_SERIALIZED').gt('stock_quantity', 0),
+    supabase.from('serialized_items').select('product:products!inner(selling_price_ttc, purchase_price_ttc)').eq('status', 'AVAILABLE').neq('products.status', 'ARCHIVED'),
+    supabase.from('products').select('stock_quantity, selling_price_ttc, purchase_price_ttc').eq('type', 'NON_SERIALIZED').neq('status', 'ARCHIVED').gt('stock_quantity', 0),
     supabase
       .from('sales')
       .select('id, receipt_number, total_ttc, finalized_at, customer:customers(first_name, last_name)')
@@ -51,6 +53,10 @@ export default async function DashboardPage() {
       .limit(6),
   ])
 
+  if ([todaySales, monthSales, openSav, serializedStock, accessoryStock, recentSales, recentSav].some((result) => result.error)) {
+    throw new Error('Le tableau de bord ne peut pas être chargé.')
+  }
+
   const sum = (rows: Array<{ total_ttc: number }> | null) => (rows ?? []).reduce((s, r) => s + Number(r.total_ttc), 0)
   const sumHT = (rows: Array<{ total_ht: number }> | null) => (rows ?? []).reduce((s, r) => s + Number(r.total_ht), 0)
   const caToday = sum(todaySales.data)
@@ -62,10 +68,8 @@ export default async function DashboardPage() {
   const stockValue =
     watches.reduce((s, w) => s + Number(w.product.selling_price_ttc), 0) +
     (accessoryStock.data ?? []).reduce((s, p) => s + p.stock_quantity * Number(p.selling_price_ttc), 0)
-  const stockCost =
-    watches.reduce((s, w) => s + Number(w.product.purchase_price_ttc ?? 0), 0) +
-    (accessoryStock.data ?? []).reduce((s, p) => s + p.stock_quantity * Number(p.purchase_price_ttc ?? 0), 0)
 
+  const stockUnits = watches.length + (accessoryStock.data ?? []).reduce((n, p) => n + p.stock_quantity, 0)
   const kpis = [
     {
       title: "CA aujourd'hui (TTC)",
@@ -78,7 +82,7 @@ export default async function DashboardPage() {
     {
       title: 'Valeur du stock',
       value: `${formatEuro(stockValue)} TTC`,
-      hint: stockCost ? `Marge potentielle : ${formatEuro(stockValue - stockCost)}` : `${watches.length} montre(s) disponible(s)`,
+      hint: `${watches.length} montre(s) · ${stockUnits - watches.length} accessoire(s)`,
       icon: Package,
     },
   ]
@@ -87,35 +91,49 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">
-            {hour < 18 ? 'Bonjour' : 'Bonsoir'}, {profile?.full_name}
-          </h1>
-          <p className="text-sm text-muted-foreground">Voici l&apos;activité de la boutique.</p>
+      <section className="workspace-hero relative isolate overflow-hidden rounded-2xl px-6 py-6 text-white sm:px-9 sm:py-10">
+        <div aria-hidden="true" className="workspace-dial pointer-events-none absolute -top-24 -right-12 -z-10 size-96 opacity-70" />
+        <div className="flex flex-wrap items-end justify-between gap-6">
+          <div>
+            <p className="mb-3 text-[10px] font-medium tracking-[.25em] text-[#d3c69c] uppercase">Votre boutique, en toute précision</p>
+            <h1 className="font-playfair text-[1.7rem] leading-tight font-medium tracking-tight sm:text-4xl">{hour < 18 ? 'Bonjour' : 'Bonsoir'}, {profile?.full_name.split(' ')[0]}.</h1>
+            <p className="mt-3 max-w-lg text-sm leading-relaxed text-white/65">Un regard sur votre activité. Du temps pour vos clients.</p>
+          </div>
+          <Link href={canSell ? '/caisse' : '/sav'} className="inline-flex h-11 items-center justify-center gap-3 rounded-lg bg-[#e8dfc2] px-5 text-sm font-semibold text-[#193e33] transition-colors hover:bg-white">
+            {canSell ? 'Ouvrir la caisse' : 'Ouvrir les dossiers SAV'} <ArrowUpRight className="size-4" />
+          </Link>
         </div>
-        <Link
-          href="/caisse"
-          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/85 sm:h-10 sm:w-auto"
-        >
-          Ouvrir la caisse <ArrowRight className="size-4" />
-        </Link>
-      </div>
+      </section>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {kpis.map((kpi) => (
           <Card key={kpi.title}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">{kpi.title}</CardTitle>
-              <kpi.icon className="h-4 w-4 text-muted-foreground" />
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/5 text-primary"><kpi.icon className="size-4" strokeWidth={1.6} /></span>
             </CardHeader>
             <CardContent>
-              <div className="text-lg font-bold tabular-nums sm:text-2xl">{kpi.value}</div>
+              <div className="text-xl font-semibold tracking-tight tabular-nums sm:text-3xl">{kpi.value}</div>
               <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                <TrendingUp className="size-3" /> {kpi.hint}
+                {kpi.hint}
               </p>
             </CardContent>
           </Card>
+        ))}
+      </div>
+
+      {stockUnits === 0 && canSell && (
+        <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-primary/15 bg-[#eef2e8] p-5">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-primary"><Watch className="size-5" /></span>
+          <div className="min-w-0 flex-1"><h2 className="font-medium">Votre collection commence ici</h2><p className="mt-1 text-sm text-muted-foreground">Ajoutez votre première pièce pour préparer votre prochaine vente.</p></div>
+          <Link href="/stock?ajouter=1" className="inline-flex items-center gap-2 text-sm font-semibold text-primary"><Plus className="size-4" /> Ajouter un article</Link>
+        </div>
+      )}
+      <div className="grid gap-3 sm:grid-cols-3">
+        {[{ href: '/stock', icon: Watch, title: 'La collection', text: 'Pièces & inventaire' }, { href: '/clients', icon: Users, title: 'Vos clients', text: 'Relations & coordonnées' }, { href: '/sav', icon: Wrench, title: 'L’atelier', text: 'Suivi & réparations' }].map((item) => (
+          <Link key={item.href} href={item.href} className="group flex items-center gap-4 rounded-xl border bg-card px-5 py-4 transition-colors hover:border-primary/30 hover:bg-primary/5">
+            <item.icon className="size-5 text-primary" strokeWidth={1.5} /><span className="flex-1"><span className="block text-sm font-semibold">{item.title}</span><span className="text-xs text-muted-foreground">{item.text}</span></span><ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
+          </Link>
         ))}
       </div>
 
@@ -123,13 +141,11 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Dernières ventes</CardTitle>
-            <Link href="/rapports" className="text-xs text-muted-foreground hover:text-foreground">
-              Journal →
-            </Link>
+            {canSell && <Link href="/rapports" className="text-xs text-muted-foreground hover:text-foreground">Journal →</Link>}
           </CardHeader>
           <CardContent>
             {(recentSales.data ?? []).length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">Aucune vente pour le moment</div>
+              <EmptyState icon={ShoppingBag} title="Le prochain beau moment" description="Vos ventes apparaîtront ici dès votre premier encaissement." />
             ) : (
               <ul className="divide-y">
                 {(recentSales.data as unknown as RecentSale[]).map((sale) => (
@@ -161,7 +177,7 @@ export default async function DashboardPage() {
           </CardHeader>
           <CardContent>
             {(recentSav.data ?? []).length === 0 ? (
-              <div className="py-8 text-center text-sm text-muted-foreground">Aucun dossier récent</div>
+              <EmptyState icon={Check} title="L’atelier est à jour" description="Retrouvez ici les dernières prises en charge et leur avancement." />
             ) : (
               <ul className="divide-y">
                 {(recentSav.data as unknown as RecentSav[]).map((sav) => (

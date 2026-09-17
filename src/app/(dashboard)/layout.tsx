@@ -34,11 +34,12 @@ export default async function DashboardLayout({
 
   return (
     <Toaster>
-      <div className="flex h-dvh overflow-hidden bg-muted/40">
+      <a href="#main-content" className="workspace-skip sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-white focus:p-3">Aller au contenu</a>
+      <div className="flex h-dvh overflow-hidden bg-background">
         <Sidebar role={profile.role} />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header profile={profile} />
-          <main className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-4 md:p-6">
+          <main id="main-content" className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-5 md:p-7 lg:px-8">
             {children}
           </main>
         </div>

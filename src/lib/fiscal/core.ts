@@ -107,7 +107,7 @@ type ChainLink = { sequence_number: number; previous_hash: string | null; curren
 function verifyChain<T extends ChainLink>(links: T[], computeHash: (link: T) => string): ChainVerification {
   for (let i = 0; i < links.length; i++) {
     const link = links[i]
-    const expectedSequence = i === 0 ? link.sequence_number : links[i - 1].sequence_number + 1
+    const expectedSequence = i === 0 ? 1 : links[i - 1].sequence_number + 1
 
     if (i === 0 && link.sequence_number === 1 && link.previous_hash !== 'GENESIS') {
       return { valid: false, count: links.length, sequence_number: link.sequence_number, reason: 'Origine de chaîne invalide' }

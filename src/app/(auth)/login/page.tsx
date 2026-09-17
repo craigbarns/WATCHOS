@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
-import { Eye, EyeOff } from 'lucide-react'
+import { Eye, EyeOff, ArrowRight, Loader2, LockKeyhole } from 'lucide-react'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -23,26 +23,27 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
-    if (error) {
-      setError(/invalid login credentials/i.test(error.message) ? 'Email ou mot de passe incorrect.' : error.message)
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
+      if (error) {
+        setError(/invalid login credentials/i.test(error.message) ? 'Email ou mot de passe incorrect.' : 'Connexion impossible. Vérifiez vos identifiants et réessayez.')
+      } else {
+        router.replace('/dashboard')
+        router.refresh()
+      }
+    } catch {
+      setError('La connexion a été interrompue. Vérifiez votre réseau et réessayez.')
+    } finally {
       setLoading(false)
-    } else {
-      router.push('/dashboard')
-      router.refresh()
     }
   }
 
   const heroImage = "url('https://images.unsplash.com/photo-1523170335258-f5ed11844a49?q=80&w=2080&auto=format&fit=crop')"
 
   return (
-    <div className="flex min-h-dvh flex-col bg-black lg:flex-row lg:bg-gray-50 dark:lg:bg-gray-900">
+    <div className="flex min-h-dvh flex-col bg-black lg:flex-row lg:bg-background">
       {/* Visuel : bandeau sur téléphone, colonne sur grand écran */}
-      <div className="relative h-[38dvh] min-h-56 shrink-0 bg-black lg:h-auto lg:w-1/2">
+      <div className="relative h-[38dvh] min-h-56 shrink-0 bg-[#183b32] lg:h-auto lg:w-1/2">
         <div className="absolute inset-0 bg-cover bg-center opacity-80" style={{ backgroundImage: heroImage }} />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/10 lg:from-black/80 lg:via-transparent lg:to-transparent" />
         <div className="absolute inset-x-6 bottom-10 text-white lg:inset-x-12 lg:bottom-12">
@@ -56,20 +57,20 @@ export default function LoginPage() {
 
       {/* Formulaire : feuille arrondie sur téléphone, carte centrée sur grand écran */}
       <div className="relative -mt-6 flex flex-1 items-start justify-center rounded-t-3xl bg-background px-5 pt-8 pb-[calc(2rem+env(safe-area-inset-bottom))] lg:mt-0 lg:w-1/2 lg:items-center lg:rounded-none lg:bg-transparent lg:p-8">
-        <Card className="w-full max-w-md border-0 shadow-none ring-0 lg:shadow-lg lg:ring-1">
+        <Card className="w-full max-w-md border-0 shadow-none ring-0 lg:bg-transparent lg:shadow-none lg:ring-0">
           <CardHeader className="space-y-1 max-lg:px-0">
             <CardTitle className="text-center font-playfair text-2xl font-bold lg:text-3xl">
               <span className="lg:hidden">Connexion</span>
               <span className="hidden lg:inline">Heure et Passion</span>
             </CardTitle>
             <CardDescription className="text-md pt-2 text-center">
-              Connectez-vous pour accéder à la caisse.
+              Votre espace, vos pièces, vos clients.
             </CardDescription>
           </CardHeader>
           <form onSubmit={handleLogin}>
             <CardContent className="space-y-4 max-lg:px-0">
               {error && (
-                <div className="rounded-md border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-600">
+                <div role="alert" className="rounded-md border border-red-100 bg-red-50 p-3 text-sm font-medium text-red-600">
                   {error}
                 </div>
               )}
@@ -114,8 +115,8 @@ export default function LoginPage() {
               </div>
             </CardContent>
             <CardFooter className="flex flex-col gap-3 border-0 bg-transparent pt-6 max-lg:px-0">
-              <Button type="submit" className="h-12 w-full bg-black text-base font-medium text-white hover:bg-gray-800 lg:h-11" disabled={loading}>
-                {loading ? 'Chargement...' : 'Se connecter'}
+              <Button type="submit" className="h-12 w-full text-base font-medium lg:h-12" disabled={loading}>
+                {loading ? <Loader2 className="animate-spin" /> : <LockKeyhole className="size-4" />} {loading ? 'Connexion…' : 'Accéder à ma boutique'} {!loading && <ArrowRight className="ml-auto size-4" />}
               </Button>
               <p className="text-center text-sm text-muted-foreground">
                 Pas encore de compte ? Demandez à l&apos;administrateur de la boutique de vous en créer un.

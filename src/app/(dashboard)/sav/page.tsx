@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -10,6 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Search, Plus, AlertTriangle } from 'lucide-react'
 import { SavCreateDialog, type Technician } from '@/components/sav/sav-create-dialog'
 import { formatDate, parisDay, SAV_CLOSED_STATUSES, SAV_STATUS } from '@/lib/format'
+import { LoadError } from '@/components/shared/load-error'
+import { useRemoteData } from '@/lib/use-remote-data'
 import { cn } from '@/lib/utils'
 
 type SavCase = {
@@ -34,13 +36,14 @@ const FILTERS = [
 
 async function loadSav() {
   const supabase = createClient()
-  const [{ data: cases }, { data: technicians }] = await Promise.all([
+  const [{ data: cases, error: casesError }, { data: technicians, error: techniciansError }] = await Promise.all([
     supabase
       .from('sav_cases')
       .select('id, case_number, brand, model, serial_number, status, deposit_date, estimated_date, customer:customers(first_name, last_name, phone), technician:profiles(full_name)')
       .order('created_at', { ascending: false }),
     supabase.from('profiles').select('id, full_name, role').eq('active', true).order('full_name'),
   ])
+  if (casesError || techniciansError) throw new Error('Chargement du SAV impossible')
   return {
     cases: (cases ?? []) as unknown as SavCase[],
     // Techniciens en premier, puis le reste de l'équipe (petites boutiques : le gérant répare aussi)
@@ -52,23 +55,9 @@ export default function SavPage() {
   const router = useRouter()
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<(typeof FILTERS)[number]['value']>('OPEN')
-  const [cases, setCases] = useState<SavCase[]>([])
-  const [technicians, setTechnicians] = useState<Technician[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data, loading, error, refresh } = useRemoteData(loadSav, { cases: [], technicians: [] })
+  const { cases, technicians } = data
   const [dialogOpen, setDialogOpen] = useState(false)
-
-  useEffect(() => {
-    let ignore = false
-    loadSav().then((data) => {
-      if (ignore) return
-      setCases(data.cases)
-      setTechnicians(data.technicians)
-      setLoading(false)
-    })
-    return () => {
-      ignore = true
-    }
-  }, [])
 
   const today = parisDay()
 
@@ -111,11 +100,13 @@ export default function SavPage() {
         </Button>
       </div>
 
+      {error && <LoadError onRetry={refresh} />}
       <Card className="gap-0 py-0">
         <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b py-3">
           <div className="relative w-full min-w-0 flex-1 sm:min-w-60">
             <Search className="absolute top-2 left-2.5 h-4 w-4 text-muted-foreground" />
             <Input
+              aria-label="Rechercher un dossier SAV"
               type="search"
               placeholder="N° dossier, client, téléphone, marque, n° de série…"
               className="w-full max-w-md pl-8"
@@ -129,6 +120,7 @@ export default function SavPage() {
                 key={f.value}
                 type="button"
                 onClick={() => setFilter(f.value)}
+                aria-pressed={filter === f.value}
                 className={cn('rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap sm:py-1', filter === f.value ? 'bg-background shadow-sm' : 'text-muted-foreground')}
               >
                 {f.label} <span className="text-xs opacity-60">{counts[f.value]}</span>
@@ -143,7 +135,7 @@ export default function SavPage() {
               <li className="py-10 text-center text-sm text-muted-foreground">Chargement des dossiers…</li>
             ) : filteredCases.length === 0 ? (
               <li className="px-4 py-10 text-center text-sm text-muted-foreground">
-                {cases.length === 0 ? 'Aucun dossier SAV. Créez le premier avec « Nouveau ».' : 'Aucun dossier trouvé'}
+                {error ? 'Données indisponibles' : cases.length === 0 ? 'Aucun dossier SAV. Créez le premier avec « Nouveau ».' : 'Aucun dossier trouvé'}
               </li>
             ) : (
               filteredCases.map((sav) => {
@@ -199,7 +191,7 @@ export default function SavPage() {
               ) : filteredCases.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                    {cases.length === 0 ? 'Aucun dossier SAV. Créez le premier avec « Nouveau dossier SAV ».' : 'Aucun dossier trouvé'}
+                    {error ? 'Données indisponibles' : cases.length === 0 ? 'Aucun dossier SAV. Créez le premier avec « Nouveau dossier SAV ».' : 'Aucun dossier trouvé'}
                   </TableCell>
                 </TableRow>
               ) : (

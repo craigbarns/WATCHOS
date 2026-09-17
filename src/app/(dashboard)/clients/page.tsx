@@ -1,6 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState } from 'react'
+import { LoadError } from '@/components/shared/load-error'
+import { useRemoteData } from '@/lib/use-remote-data'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -20,35 +22,18 @@ type Customer = {
 }
 
 async function loadClients(): Promise<Customer[]> {
-  const { data } = await createClient()
+  const { data, error } = await createClient()
     .from('customers')
     .select('id, first_name, last_name, email, phone, city, created_at')
     .order('created_at', { ascending: false })
+  if (error) throw new Error(error.message)
   return data ?? []
 }
 
 export default function ClientsPage() {
   const [search, setSearch] = useState('')
-  const [clients, setClients] = useState<Customer[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: clients, loading, error, refresh: fetchClients } = useRemoteData(loadClients, [])
   const [dialogOpen, setDialogOpen] = useState(false)
-
-  const fetchClients = useCallback(async () => {
-    setClients(await loadClients())
-    setLoading(false)
-  }, [])
-
-  useEffect(() => {
-    let ignore = false
-    loadClients().then((rows) => {
-      if (ignore) return
-      setClients(rows)
-      setLoading(false)
-    })
-    return () => {
-      ignore = true
-    }
-  }, [])
 
   const filteredClients = clients.filter(c => 
     `${c.first_name} ${c.last_name} ${c.email ?? ''} ${c.phone ?? ''} ${c.city ?? ''}`.toLowerCase().includes(search.toLowerCase())
@@ -67,11 +52,13 @@ export default function ClientsPage() {
         </Button>
       </div>
 
+      {error && <LoadError onRetry={fetchClients} />}
       <Card className="gap-0 py-0">
         <CardHeader className="flex flex-row items-center gap-4 border-b py-3">
           <div className="relative flex-1">
             <Search className="absolute top-2 left-2.5 h-4 w-4 text-muted-foreground" />
             <Input
+              aria-label="Rechercher un client"
               type="search"
               placeholder="Nom, email, téléphone, ville…"
               className="w-full max-w-md pl-8"
@@ -85,7 +72,7 @@ export default function ClientsPage() {
             {loading ? (
               <li className="py-10 text-center text-sm text-muted-foreground">Chargement des clients…</li>
             ) : filteredClients.length === 0 ? (
-              <li className="py-10 text-center text-sm text-muted-foreground">Aucun client trouvé</li>
+              <li className="py-10 text-center text-sm text-muted-foreground">{error ? 'Données indisponibles' : 'Aucun client trouvé'}</li>
             ) : (
               filteredClients.map((client) => (
                 <li key={client.id} className="flex items-center gap-3 px-4 py-3">
@@ -142,7 +129,7 @@ export default function ClientsPage() {
                   </TableRow>
                 ) : filteredClients.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">Aucun client trouvé</TableCell>
+                    <TableCell colSpan={5} className="py-8 text-center text-muted-foreground">{error ? 'Données indisponibles' : 'Aucun client trouvé'}</TableCell>
                   </TableRow>
                 ) : (
                   filteredClients.map((client) => (

@@ -36,18 +36,27 @@ export function parisDay(date: Date = new Date()): string {
 }
 
 /** Veille (YYYY-MM-DD) dans le fuseau de la boutique */
-export function parisYesterday(): string {
-  return parisDay(new Date(Date.now() - 86_400_000))
+export function parisYesterday(date: Date = new Date()): string {
+  const day = new Date(`${parisDay(date)}T12:00:00Z`)
+  day.setUTCDate(day.getUTCDate() - 1)
+  return day.toISOString().slice(0, 10)
 }
 
-/** Début de journée à Paris, en ISO UTC */
+/** Midnight in Paris, including the nights when the UTC offset changes. */
 export function parisDayStartISO(day: string): string {
-  // L'offset de Paris est +01:00 ou +02:00 : on le déduit de midi ce jour-là
-  const noonUtc = new Date(`${day}T12:00:00Z`)
-  const parisNoon = new Date(noonUtc.toLocaleString('en-US', { timeZone: 'Europe/Paris' }))
-  const utcNoon = new Date(noonUtc.toLocaleString('en-US', { timeZone: 'UTC' }))
-  const offsetMs = parisNoon.getTime() - utcNoon.getTime()
-  return new Date(new Date(`${day}T00:00:00Z`).getTime() - offsetMs).toISOString()
+  const target = Date.parse(`${day}T00:00:00Z`)
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(target) || new Date(target).toISOString().slice(0, 10) !== day) throw new Error('Date invalide')
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+  })
+  let instant = target
+  for (let i = 0; i < 3; i++) {
+    const parts = Object.fromEntries(formatter.formatToParts(instant).map(({ type, value }) => [type, value]))
+    const local = Date.parse(`${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}Z`)
+    instant += target - local
+  }
+  return new Date(instant).toISOString()
 }
 
 export const ROLE_LABELS: Record<string, string> = {

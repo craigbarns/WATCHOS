@@ -42,7 +42,7 @@ export function MobileNav({ profile }: { profile: Profile }) {
           {primary.map((item) => {
             const active = isActive(pathname, item.href)
             return (
-              <Link key={item.href} href={item.href} className={cn(tab, active ? 'text-foreground' : 'text-muted-foreground')}>
+              <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined} className={cn(tab, active ? 'text-foreground' : 'text-muted-foreground')}>
                 <span className={cn('flex h-7 w-12 items-center justify-center rounded-full transition-colors', active && 'bg-primary text-primary-foreground')}>
                   <item.icon className="size-[18px]" />
                 </span>

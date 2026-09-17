@@ -13,13 +13,13 @@ const geistMono = Geist_Mono({
 });
 
 const playfair = Playfair_Display({
-  variable: "--font-playfair",
+  variable: "--font-display",
   subsets: ["latin"],
 });
 
 export const metadata: Metadata = {
   title: "Heure et Passion - Caisse & SAV",
-  description: "Logiciel de caisse horlogerie BOFiP",
+  description: "Votre boutique horlogère, en toute précision. Caisse, stock, clients et service après-vente.",
   appleWebApp: {
     capable: true,
     title: "H&P Caisse",
@@ -33,7 +33,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: light)", color: "#f7f7f2" },
     { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
   ],
 };

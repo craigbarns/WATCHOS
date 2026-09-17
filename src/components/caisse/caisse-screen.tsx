@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -68,6 +69,8 @@ export function CaisseScreen({
   // --- Catalogue
   const [query, setQuery] = useState('')
   const debouncedQuery = useDebounced(query)
+  const [catalogError, setCatalogError] = useState(false)
+  const [reloadCatalog, setReloadCatalog] = useState(0)
   const [results, setResults] = useState<{ query: string | null; items: CatalogItem[] }>({ query: null, items: [] })
   const searching = results.query !== debouncedQuery
   const searchRef = useRef<HTMLInputElement>(null)
@@ -82,6 +85,7 @@ export function CaisseScreen({
   const [error, setError] = useState<string | null>(null)
   const [processing, startProcessing] = useTransition()
   const idempotencyKey = useRef<string>('')
+  const checkoutPending = useRef(false)
 
   // --- Client
   const [customerQuery, setCustomerQuery] = useState('')
@@ -112,7 +116,7 @@ export function CaisseScreen({
       const match = items.find((i) => i.serial_number?.toLowerCase() === serial.toLowerCase())
       if (match) setCart((c) => (c.some((l) => l.key === match.key) ? c : [...c, { ...match, quantity: 1, discount: 0 }]))
       else setError(`La montre ${serial} n'est pas disponible à la vente.`)
-    })
+    }).catch(() => setError('Impossible de charger cette montre. Réessayez.'))
   }, [search])
 
   // Toute modification du panier invalide la clé d'idempotence de la tentative précédente
@@ -123,17 +127,19 @@ export function CaisseScreen({
   useEffect(() => {
     let cancelled = false
     search(debouncedQuery).then((items) => {
-      if (!cancelled) setResults({ query: debouncedQuery, items })
+      if (!cancelled) { setResults({ query: debouncedQuery, items }); setCatalogError(false) }
+    }).catch(() => {
+      if (!cancelled) { setCatalogError(true); setResults({ query: debouncedQuery, items: [] }) }
     })
     return () => {
       cancelled = true
     }
-  }, [debouncedQuery, search])
+  }, [debouncedQuery, search, reloadCatalog])
 
   useEffect(() => {
     if (!debouncedCustomerQuery) return
     let cancelled = false
-    searchCustomers(debouncedCustomerQuery).then((r) => !cancelled && setCustomerResults(r))
+    searchCustomers(debouncedCustomerQuery).then((r) => !cancelled && setCustomerResults(r)).catch(() => { if (!cancelled) { setCustomerResults([]); setError('La recherche de clients est indisponible.') } })
     return () => {
       cancelled = true
     }
@@ -154,6 +160,8 @@ export function CaisseScreen({
       setCart((c) => [...c, { ...item, quantity: 1, discount: 0 }])
     }
     setPayments([])
+    setCashReceived(null)
+    setAmountInput('')
     setQuery('')
     if (isDesktop) searchRef.current?.focus()
   }
@@ -169,6 +177,8 @@ export function CaisseScreen({
       })
     )
     setPayments([])
+    setCashReceived(null)
+    setAmountInput('')
   }
 
   const applyDiscount = (line: CartLine) => {
@@ -196,35 +206,40 @@ export function CaisseScreen({
   const resetSale = () => {
     setCart([])
     setPayments([])
-    setCustomer(null)
     setCashReceived(null)
     setAmountInput('')
+    setCustomer(null)
     setError(null)
     setLastSaleId(null)
     if (isDesktop) searchRef.current?.focus()
   }
 
   const checkout = () => {
-    if (!cart.length || remaining !== 0) return
+    if (!cart.length || totalTTC <= 0 || remaining !== 0 || checkoutPending.current || lastSaleId) return
+    checkoutPending.current = true
     setError(null)
     startProcessing(async () => {
-      const result = await finalizeSale(
-        customer?.id ?? null,
-        cart.map((l) => ({
-          product_id: l.product_id,
-          serialized_item_id: l.serialized_item_id,
-          quantity: l.quantity,
-          discount_amount: l.discount,
-        })),
-        payments,
-        idempotencyKey.current
-      )
-      if (!result.success) {
-        setError(result.error)
-        return
-      }
-      setLastSaleId(result.data.sale_id)
-      setResults({ query: debouncedQuery, items: await search(debouncedQuery) })
+      try {
+        const result = await finalizeSale(
+          customer?.id ?? null,
+          cart.map((l) => ({
+            product_id: l.product_id,
+            serialized_item_id: l.serialized_item_id,
+            quantity: l.quantity,
+            discount_amount: l.discount,
+          })),
+          payments,
+          idempotencyKey.current
+        )
+        if (!result.success) {
+          setError(result.error)
+          return
+        }
+        setLastSaleId(result.data.sale_id)
+        setReloadCatalog((n) => n + 1)
+      } catch {
+        setError('Connexion interrompue. Réessayez : la même tentative ne sera pas encaissée deux fois.')
+      } finally { checkoutPending.current = false }
     })
   }
 
@@ -248,7 +263,8 @@ export function CaisseScreen({
   const change = cashReceived !== null ? cents(cashReceived - (payments.findLast((p) => p.method === 'ESPÈCES')?.amount ?? 0)) : 0
 
   return (
-    <div className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_22rem]">
+    <>
+    <fieldset disabled={processing || !!lastSaleId} aria-label="Nouvelle vente" className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_22rem]">
       {/* Colonne gauche : catalogue et panier */}
       <div className="flex min-w-0 flex-col gap-3 sm:gap-4 lg:min-h-0">
         <Card className="gap-0 py-0">
@@ -256,6 +272,7 @@ export function CaisseScreen({
             <div className="relative">
               <Search className="absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
               <Input
+                aria-label="Rechercher ou scanner un article"
                 ref={searchRef}
                 autoFocus={isDesktop}
                 type="search"
@@ -267,20 +284,23 @@ export function CaisseScreen({
                   if (e.key !== 'Enter' || !query.trim()) return
                   e.preventDefault()
                   // Douchette : correspondance exacte n° de série / EAN → ajout direct
-                  const fresh = await search(query)
-                  const exact = fresh.find((i) => i.serial_number?.toLowerCase() === query.trim().toLowerCase())
-                  if (exact) addToCart(exact)
-                  else if (fresh.length === 1) addToCart(fresh[0])
-                  else setResults({ query: debouncedQuery, items: fresh })
+                  try {
+                    const fresh = await search(query)
+                    const exactMatches = fresh.filter((i) => [i.serial_number, i.sku, i.ean, i.reference].some((code) => code?.toLowerCase() === query.trim().toLowerCase()))
+                    const exact = exactMatches.length === 1 ? exactMatches[0] : undefined
+                    if (exact) addToCart(exact)
+                    else if (fresh.length === 1) addToCart(fresh[0])
+                    else setResults({ query: debouncedQuery, items: fresh })
+                  } catch { setCatalogError(true) }
                 }}
               />
               {searching && <Loader2 className="absolute top-3 right-3 h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
           </CardHeader>
           <CardContent className={cn('max-h-72 overflow-x-hidden overflow-y-auto p-2 lg:max-h-56', !query && cart.length > 0 && 'max-lg:hidden')}>
-            {results.items.length === 0 && !searching ? (
+            {catalogError ? <div role="alert" className="p-5 text-center text-sm"><p>Le catalogue n’a pas pu être chargé.</p><Button variant="outline" className="mt-3" onClick={() => setReloadCatalog((n) => n + 1)}>Réessayer</Button></div> : results.items.length === 0 && !searching ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                {query ? 'Aucun article disponible ne correspond.' : 'Aucun article en stock. Ajoutez des produits depuis la page Stock.'}
+                {query ? 'Aucun article disponible ne correspond.' : <>Votre collection est prête à accueillir ses premières pièces.<br /><Link href="/stock?ajouter=1" className="mt-3 inline-block font-medium text-primary underline underline-offset-4">Ajouter un article au stock</Link></>}
               </p>
             ) : (
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
@@ -395,6 +415,8 @@ export function CaisseScreen({
                       onClick={() => {
                         setCart((c) => c.filter((l) => l.key !== line.key))
                         setPayments([])
+                        setCashReceived(null)
+                        setAmountInput('')
                       }}
                     >
                       <Trash2 />
@@ -461,6 +483,7 @@ export function CaisseScreen({
             ) : (
               <div className="relative">
                 <Input
+                  aria-label="Rechercher un client"
                   placeholder={isDesktop ? 'Rechercher un client (vente comptoir par défaut)' : 'Client (facultatif)'}
                   value={customerQuery}
                   onChange={(e) => setCustomerQuery(e.target.value)}
@@ -571,10 +594,10 @@ export function CaisseScreen({
             </div>
           </CardContent>
           <CardFooter className="flex-col gap-2 border-t p-4">
-            {error && <div className="w-full rounded-md bg-destructive/10 p-2 text-sm text-destructive">{error}</div>}
+            {error && <div role="alert" className="w-full rounded-md bg-destructive/10 p-2 text-sm text-destructive">{error}</div>}
             <Button
               className="h-14 w-full text-lg font-bold tracking-wide"
-              disabled={cart.length === 0 || remaining !== 0 || processing}
+              disabled={cart.length === 0 || totalTTC <= 0 || remaining !== 0 || processing || !!lastSaleId}
               onClick={checkout}
             >
               {processing ? <Loader2 className="animate-spin" /> : null}
@@ -597,7 +620,7 @@ export function CaisseScreen({
                 </div>
                 <div className="text-xl font-bold tabular-nums">{formatEuro(totalTTC)}</div>
               </div>
-              {remaining === 0 ? (
+              {remaining === 0 && totalTTC > 0 ? (
                 <Button className="h-11 px-5 text-base font-bold" disabled={processing} onClick={checkout}>
                   {processing ? <Loader2 className="animate-spin" /> : null} Encaisser
                 </Button>
@@ -614,6 +637,7 @@ export function CaisseScreen({
         </>
       )}
 
+    </fieldset>
       <CustomerFormDialog
         open={customerDialogOpen}
         onOpenChange={setCustomerDialogOpen}
@@ -625,6 +649,6 @@ export function CaisseScreen({
       />
 
       <ReceiptDialog saleId={lastSaleId} onClose={resetSale} closeLabel="Nouvelle vente" />
-    </div>
+    </>
   )
 }

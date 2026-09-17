@@ -42,3 +42,9 @@ next-env.d.ts
 
 # outils locaux
 /.claude/
+
+# Local verification and private maintenance backups
+/backups/
+/test-results/
+/playwright-report/
+/.test-session.json

@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
+import { sanitizeSearchTerm as sanitizeTerm } from '@/lib/search'
 
 export type PaymentMethod = 'CB' | 'ESPÈCES' | 'VIREMENT' | 'CHÈQUE' | 'AUTRE'
 
@@ -27,6 +28,8 @@ export type CatalogItem = {
   brand: string | null
   model: string
   reference: string | null
+  sku?: string | null
+  ean?: string | null
   serial_number?: string
   price_ttc: number
   vat_rate: number
@@ -42,11 +45,6 @@ export type CustomerSummary = {
   email: string | null
 }
 
-/** Nettoie une saisie pour un filtre PostgREST `or()` (virgules et parenthèses interdites). */
-function sanitizeTerm(term: string) {
-  return term.replace(/[,()*%\\]/g, ' ').trim()
-}
-
 export async function searchCatalog(query: string): Promise<CatalogItem[]> {
   const guard = await requireStaff()
   if (!guard.ok) return []
@@ -55,81 +53,53 @@ export async function searchCatalog(query: string): Promise<CatalogItem[]> {
   const supabase = await createClient()
   const productFilter = `brand.ilike.%${term}%,model.ilike.%${term}%,reference.ilike.%${term}%,sku.ilike.%${term}%,ean.eq.${term}`
 
-  const [serializedBySerial, products] = await Promise.all([
-    term
-      ? supabase
-          .from('serialized_items')
-          .select('id, serial_number, year, has_box, has_papers, product:products!inner(id, brand, model, reference, selling_price_ttc, vat_rate)')
-          .eq('status', 'AVAILABLE')
-          .ilike('serial_number', `%${term}%`)
-          .limit(10)
-      : Promise.resolve({ data: [] }),
-    (() => {
-      let q = supabase
-        .from('products')
-        .select('id, type, brand, model, reference, selling_price_ttc, vat_rate, stock_quantity, condition, serialized_items(id, serial_number, status, year, has_box, has_papers)')
-        .limit(20)
-      if (term) q = q.or(productFilter)
-      return q.order('brand')
-    })(),
+  // Limit only after availability filtering: sold references must never hide stock.
+  const watchesQuery = () => supabase
+    .from('serialized_items')
+    .select('id, serial_number, year, has_box, has_papers, product:products!inner(id, brand, model, reference, sku, ean, selling_price_ttc, vat_rate)')
+    .eq('status', 'AVAILABLE')
+    .neq('product.status', 'ARCHIVED')
+    .order('serial_number')
+    .limit(20)
+  let watchesByProduct = watchesQuery()
+  let accessories = supabase.from('products')
+    .select('id, brand, model, reference, sku, ean, selling_price_ttc, vat_rate, stock_quantity')
+    .eq('type', 'NON_SERIALIZED').neq('status', 'ARCHIVED').gt('stock_quantity', 0)
+    .order('brand').order('id').limit(20)
+  if (term) {
+    watchesByProduct = watchesByProduct.or(productFilter, { referencedTable: 'product' })
+    accessories = accessories.or(productFilter)
+  }
+  const [bySerial, byProduct, accessoryResult] = await Promise.all([
+    term ? watchesQuery().ilike('serial_number', `%${term}%`) : Promise.resolve({ data: [], error: null }),
+    watchesByProduct,
+    accessories,
   ])
+  if (bySerial.error || byProduct.error || accessoryResult.error) throw new Error('Le catalogue est momentanément indisponible.')
 
+  type WatchRow = {
+    id: string; serial_number: string; year: string | null; has_box: boolean; has_papers: boolean
+    product: { id: string; brand: string | null; model: string; reference: string | null; sku: string | null; ean: string | null; selling_price_ttc: number; vat_rate: number }
+  }
   const items = new Map<string, CatalogItem>()
-  type SerializedRow = { id: string; serial_number: string; year: string | null; has_box: boolean; has_papers: boolean; status?: string }
-
-  const fullSet = (s: SerializedRow) =>
-    [s.year, s.has_box && s.has_papers ? 'Full set' : s.has_papers ? 'Papiers' : s.has_box ? 'Boîte' : null].filter(Boolean).join(' · ') || null
-
-  for (const row of (serializedBySerial.data ?? []) as unknown as Array<SerializedRow & { product: { id: string; brand: string | null; model: string; reference: string | null; selling_price_ttc: number; vat_rate: number } }>) {
+  for (const row of [...(bySerial.data ?? []), ...(byProduct.data ?? [])] as unknown as WatchRow[]) {
+    const p = row.product
     items.set(row.id, {
-      key: row.id,
-      product_id: row.product.id,
-      serialized_item_id: row.id,
-      brand: row.product.brand,
-      model: row.product.model,
-      reference: row.product.reference,
-      serial_number: row.serial_number,
-      price_ttc: Number(row.product.selling_price_ttc),
-      vat_rate: Number(row.product.vat_rate),
-      stock: 1,
-      details: fullSet(row),
+      key: row.id, product_id: p.id, serialized_item_id: row.id,
+      brand: p.brand, model: p.model, reference: p.reference, sku: p.sku, ean: p.ean,
+      serial_number: row.serial_number, price_ttc: Number(p.selling_price_ttc), vat_rate: Number(p.vat_rate), stock: 1,
+      details: [row.year, row.has_box && row.has_papers ? 'Full set' : row.has_papers ? 'Papiers' : row.has_box ? 'Boîte' : null].filter(Boolean).join(' · ') || null,
     })
   }
-
-  for (const p of products.data ?? []) {
-    if (p.type === 'SERIALIZED') {
-      for (const s of (p.serialized_items ?? []) as SerializedRow[]) {
-        if (s.status !== 'AVAILABLE' || items.has(s.id)) continue
-        items.set(s.id, {
-          key: s.id,
-          product_id: p.id,
-          serialized_item_id: s.id,
-          brand: p.brand,
-          model: p.model,
-          reference: p.reference,
-          serial_number: s.serial_number,
-          price_ttc: Number(p.selling_price_ttc),
-          vat_rate: Number(p.vat_rate),
-          stock: 1,
-          details: fullSet(s),
-        })
-      }
-    } else if (p.stock_quantity > 0) {
-      items.set(p.id, {
-        key: p.id,
-        product_id: p.id,
-        brand: p.brand,
-        model: p.model,
-        reference: p.reference,
-        price_ttc: Number(p.selling_price_ttc),
-        vat_rate: Number(p.vat_rate),
-        stock: p.stock_quantity,
-        details: null,
-      })
-    }
+  for (const p of accessoryResult.data ?? []) {
+    items.set(p.id, {
+      key: p.id, product_id: p.id, brand: p.brand, model: p.model, reference: p.reference,
+      sku: p.sku, ean: p.ean, price_ttc: Number(p.selling_price_ttc), vat_rate: Number(p.vat_rate), stock: p.stock_quantity, details: null,
+    })
   }
-
-  return [...items.values()].slice(0, 20)
+  // Exact barcode/reference matches stay first even when broad searches return 20 watches.
+  const exact = (item: CatalogItem) => [item.serial_number, item.sku, item.ean, item.reference].some((code) => code?.toLowerCase() === term.toLowerCase())
+  return [...items.values()].sort((a, b) => Number(exact(b)) - Number(exact(a))).slice(0, 20)
 }
 
 export async function searchCustomers(query: string): Promise<CustomerSummary[]> {
@@ -144,7 +114,8 @@ export async function searchCustomers(query: string): Promise<CustomerSummary[]>
   } else {
     q = q.order('created_at', { ascending: false })
   }
-  const { data } = await q
+  const { data, error } = await q
+  if (error) throw new Error('La recherche de clients est indisponible.')
   return data ?? []
 }
 
