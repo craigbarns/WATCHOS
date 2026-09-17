@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { Clock } from 'lucide-react'
 import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
+import { MobileNav } from '@/components/layout/mobile-nav'
 import { Toaster } from '@/components/ui/toast'
 import { getCurrentProfile } from '@/lib/auth'
 
@@ -33,12 +34,15 @@ export default async function DashboardLayout({
 
   return (
     <Toaster>
-      <div className="flex h-screen overflow-hidden bg-muted/40">
+      <div className="flex h-dvh overflow-hidden bg-muted/40">
         <Sidebar role={profile.role} />
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <Header profile={profile} />
-          <main className="flex-1 overflow-y-auto p-4 md:p-6">{children}</main>
+          <main className="flex-1 overflow-x-hidden overflow-y-auto overscroll-contain px-3 pt-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-4 md:p-6">
+            {children}
+          </main>
         </div>
+        <MobileNav profile={profile} />
       </div>
     </Toaster>
   )

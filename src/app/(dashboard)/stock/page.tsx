@@ -144,19 +144,19 @@ export default function StockPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-playfair text-3xl font-bold tracking-tight">Stock</h1>
+          <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Stock</h1>
           <p className="text-sm text-muted-foreground">
-            {filteredItems.length} article(s) · valeur {formatEuro(totalValueHT)} HT · {formatEuro(totalValue)} TTC
+            {filteredItems.length} article(s) · {formatEuro(totalValueHT)} HT · {formatEuro(totalValue)} TTC
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} className="h-9">
-          <Plus /> Ajouter un article
+        <Button onClick={() => setDialogOpen(true)} className="h-10 sm:h-9">
+          <Plus /> <span className="max-sm:hidden">Ajouter un article</span><span className="sm:hidden">Ajouter</span>
         </Button>
       </div>
 
       <Card className="gap-0 py-0">
         <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b py-3">
-          <div className="relative min-w-60 flex-1">
+          <div className="relative w-full min-w-0 flex-1 sm:min-w-60">
             <Search className="absolute top-2 left-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
@@ -166,14 +166,14 @@ export default function StockPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex rounded-lg bg-muted p-0.5">
+          <div className="scrollbar-none -mx-4 flex w-[calc(100%+2rem)] overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:px-0"><div className="flex shrink-0 rounded-lg bg-muted p-0.5">
             {FILTERS.filter((f) => f.value === 'AVAILABLE' || f.value === 'ALL' || (counts[f.value] ?? 0) > 0 || filter === f.value).map((f) => (
               <button
                 key={f.value}
                 type="button"
                 onClick={() => setFilter(f.value)}
                 className={cn(
-                  'rounded-md px-3 py-1 text-sm font-medium',
+                  'rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap sm:py-1',
                   filter === f.value ? 'bg-background shadow-sm' : 'text-muted-foreground'
                 )}
               >
@@ -182,8 +182,52 @@ export default function StockPage() {
               </button>
             ))}
           </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
+          {/* Téléphone : cartes */}
+          <ul className="divide-y md:hidden">
+            {loading ? (
+              <li className="py-10 text-center text-sm text-muted-foreground">Chargement du stock…</li>
+            ) : filteredItems.length === 0 ? (
+              <li className="py-10 text-center text-sm text-muted-foreground">Aucun article trouvé</li>
+            ) : (
+              filteredItems.map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/stock/${item.id}`)}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left active:bg-muted"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">
+                        {item.brand} {item.model}
+                      </div>
+                      <div className="truncate text-xs text-muted-foreground">
+                        {item.serial ? <span className="font-mono">{item.serial}</span> : `${item.quantity} en stock`}
+                        {item.ref && ` · ${item.ref}`}
+                      </div>
+                      <span
+                        className={cn(
+                          'mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                          item.status === 'OUT' ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' : ITEM_STATUS[item.status]?.className
+                        )}
+                      >
+                        {item.status === 'OUT' ? 'Rupture' : ITEM_STATUS[item.status]?.label ?? item.status}
+                      </span>
+                    </div>
+                    <div className="text-right tabular-nums">
+                      <div className="font-semibold">{formatEuro(item.price)}</div>
+                      <div className="text-xs text-muted-foreground">{formatEuro(toHT(item.price, item.vatRate))} HT</div>
+                    </div>
+                    <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -234,6 +278,7 @@ export default function StockPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

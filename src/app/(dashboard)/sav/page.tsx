@@ -101,19 +101,19 @@ export default function SavPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h1 className="font-playfair text-3xl font-bold tracking-tight">Service après-vente</h1>
+          <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Service après-vente</h1>
           <p className="text-sm text-muted-foreground">
             {counts.OPEN} dossier(s) en cours · {counts.READY} prêt(s) à restituer
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)} className="h-9">
-          <Plus /> Nouveau dossier SAV
+        <Button onClick={() => setDialogOpen(true)} className="h-10 sm:h-9">
+          <Plus /> <span className="max-sm:hidden">Nouveau dossier SAV</span><span className="sm:hidden">Nouveau</span>
         </Button>
       </div>
 
       <Card className="gap-0 py-0">
         <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b py-3">
-          <div className="relative min-w-60 flex-1">
+          <div className="relative w-full min-w-0 flex-1 sm:min-w-60">
             <Search className="absolute top-2 left-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
@@ -123,20 +123,62 @@ export default function SavPage() {
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="flex rounded-lg bg-muted p-0.5">
+          <div className="scrollbar-none -mx-4 flex w-[calc(100%+2rem)] overflow-x-auto px-4 sm:mx-0 sm:w-auto sm:px-0"><div className="flex shrink-0 rounded-lg bg-muted p-0.5">
             {FILTERS.map((f) => (
               <button
                 key={f.value}
                 type="button"
                 onClick={() => setFilter(f.value)}
-                className={cn('rounded-md px-3 py-1 text-sm font-medium', filter === f.value ? 'bg-background shadow-sm' : 'text-muted-foreground')}
+                className={cn('rounded-md px-3 py-1.5 text-sm font-medium whitespace-nowrap sm:py-1', filter === f.value ? 'bg-background shadow-sm' : 'text-muted-foreground')}
               >
                 {f.label} <span className="text-xs opacity-60">{counts[f.value]}</span>
               </button>
             ))}
           </div>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
+          <ul className="divide-y md:hidden">
+            {loading ? (
+              <li className="py-10 text-center text-sm text-muted-foreground">Chargement des dossiers…</li>
+            ) : filteredCases.length === 0 ? (
+              <li className="px-4 py-10 text-center text-sm text-muted-foreground">
+                {cases.length === 0 ? 'Aucun dossier SAV. Créez le premier avec « Nouveau ».' : 'Aucun dossier trouvé'}
+              </li>
+            ) : (
+              filteredCases.map((sav) => {
+                const late = sav.estimated_date && sav.estimated_date < today && !SAV_CLOSED_STATUSES.includes(sav.status)
+                return (
+                  <li key={sav.id}>
+                    <button type="button" onClick={() => openCase(sav.id)} className="w-full px-4 py-3 text-left active:bg-muted">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-mono text-sm font-medium">{sav.case_number}</span>
+                        <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap', SAV_STATUS[sav.status]?.className)}>
+                          {SAV_STATUS[sav.status]?.label ?? sav.status}
+                        </span>
+                      </div>
+                      <div className="mt-0.5 truncate font-medium">
+                        {sav.brand} {sav.model}
+                      </div>
+                      <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                        <span className="truncate">
+                          {sav.customer?.first_name} {sav.customer?.last_name} · déposée le {formatDate(sav.deposit_date)}
+                        </span>
+                        {sav.estimated_date && (
+                          <span className={cn('inline-flex shrink-0 items-center gap-1', late && 'font-semibold text-destructive')}>
+                            {late && <AlertTriangle className="size-3" />}
+                            {formatDate(sav.estimated_date)}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  </li>
+                )
+              })
+            )}
+          </ul>
+
+          <div className="hidden md:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -201,6 +243,7 @@ export default function SavPage() {
               )}
             </TableBody>
           </Table>
+          </div>
         </CardContent>
       </Card>
 

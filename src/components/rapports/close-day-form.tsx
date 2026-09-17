@@ -20,9 +20,9 @@ export function CloseDayForm({ defaultDay, maxDay }: { defaultDay: string; maxDa
   }
 
   return (
-    <div className="flex gap-2">
-      <Input type="date" value={day} max={maxDay} onChange={(e) => setDay(e.target.value)} className="h-9" />
-      <Button onClick={submit} disabled={pending || !day} className="h-9">
+    <div className="flex flex-col gap-2 sm:flex-row">
+      <Input type="date" value={day} max={maxDay} onChange={(e) => setDay(e.target.value)} className="h-10 sm:h-9" />
+      <Button onClick={submit} disabled={pending || !day} className="h-10 sm:h-9">
         {pending ? 'Génération…' : 'Générer le Z'}
       </Button>
     </div>

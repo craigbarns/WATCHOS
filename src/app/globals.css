@@ -129,3 +129,26 @@
     @apply font-sans;
   }
 }
+
+/* ---------- Mobile ---------- */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-width: 767px) {
+  /* En dessous de 16 px, iOS zoome sur le champ au focus */
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Barres de filtres défilables horizontalement, sans barre visible */
+.scrollbar-none {
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}

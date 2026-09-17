@@ -89,20 +89,20 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-playfair text-3xl font-bold tracking-tight">
+          <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">
             {hour < 18 ? 'Bonjour' : 'Bonsoir'}, {profile?.full_name}
           </h1>
           <p className="text-sm text-muted-foreground">Voici l&apos;activité de la boutique.</p>
         </div>
         <Link
           href="/caisse"
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/85"
+          className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/85 sm:h-10 sm:w-auto"
         >
           Ouvrir la caisse <ArrowRight className="size-4" />
         </Link>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         {kpis.map((kpi) => (
           <Card key={kpi.title}>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -110,7 +110,7 @@ export default async function DashboardPage() {
               <kpi.icon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold tabular-nums">{kpi.value}</div>
+              <div className="text-lg font-bold tabular-nums sm:text-2xl">{kpi.value}</div>
               <p className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
                 <TrendingUp className="size-3" /> {kpi.hint}
               </p>

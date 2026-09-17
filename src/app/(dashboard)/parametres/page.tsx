@@ -19,7 +19,7 @@ export default async function ParametresPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
-      <h1 className="font-playfair text-3xl font-bold tracking-tight">Paramètres</h1>
+      <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Paramètres</h1>
 
       <Card>
         <CardHeader>

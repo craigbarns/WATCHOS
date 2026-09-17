@@ -321,8 +321,8 @@ export default function CaissePage() {
             ) : (
               <ul className="divide-y">
                 {cart.map((line) => (
-                  <li key={line.key} className="flex items-center gap-3 px-4 py-3">
-                    <div className="min-w-0 flex-1">
+                  <li key={line.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+                    <div className="order-1 min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-0">
                       <div className="truncate font-medium">
                         {line.brand} {line.model}
                       </div>
@@ -333,14 +333,14 @@ export default function CaissePage() {
                     </div>
 
                     {line.serialized_item_id ? (
-                      <span className="w-24 text-center text-xs text-muted-foreground">Pièce unique</span>
+                      <span className="order-3 w-24 text-xs text-muted-foreground sm:order-2 sm:text-center">Pièce unique</span>
                     ) : (
-                      <div className="flex w-24 items-center justify-center gap-1">
-                        <Button variant="outline" size="icon-sm" onClick={() => updateLine(line.key, { quantity: line.quantity - 1 })} aria-label="Diminuer">
+                      <div className="order-3 flex items-center gap-1 sm:order-2 sm:w-24 sm:justify-center">
+                        <Button variant="outline" size="icon-sm" className="size-9 sm:size-7" onClick={() => updateLine(line.key, { quantity: line.quantity - 1 })} aria-label="Diminuer">
                           <Minus />
                         </Button>
                         <span className="w-6 text-center tabular-nums">{line.quantity}</span>
-                        <Button variant="outline" size="icon-sm" onClick={() => updateLine(line.key, { quantity: line.quantity + 1 })} aria-label="Augmenter">
+                        <Button variant="outline" size="icon-sm" className="size-9 sm:size-7" onClick={() => updateLine(line.key, { quantity: line.quantity + 1 })} aria-label="Augmenter">
                           <Plus />
                         </Button>
                       </div>
@@ -352,12 +352,12 @@ export default function CaissePage() {
                       onClick={() => applyDiscount(line)}
                       aria-label="Remise"
                       title="Appliquer une remise"
-                      className={cn(line.discount > 0 && 'text-emerald-600')}
+                      className={cn('order-4 size-9 sm:order-3 sm:size-7', line.discount > 0 && 'text-emerald-600')}
                     >
                       <Percent />
                     </Button>
 
-                    <div className="w-28 text-right tabular-nums">
+                    <div className="order-5 ml-auto w-28 text-right tabular-nums sm:order-4 sm:ml-0">
                       {line.discount > 0 && (
                         <div className="text-xs text-muted-foreground line-through">{formatEuro(line.price_ttc * line.quantity)}</div>
                       )}
@@ -368,7 +368,7 @@ export default function CaissePage() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      className="text-destructive"
+                      className="order-2 size-9 text-destructive sm:order-5 sm:size-7"
                       aria-label="Retirer"
                       onClick={() => {
                         setCart((c) => c.filter((l) => l.key !== line.key))
@@ -475,7 +475,7 @@ export default function CaissePage() {
           </CardContent>
         </Card>
 
-        <Card className="flex flex-1 flex-col gap-0 py-0">
+        <Card id="paiement" className="flex flex-1 scroll-mt-4 flex-col gap-0 py-0">
           <CardHeader className="border-b py-3">
             <CardTitle className="text-lg">Paiement</CardTitle>
           </CardHeader>
@@ -562,6 +562,35 @@ export default function CaissePage() {
           </CardFooter>
         </Card>
       </div>
+
+      {/* Téléphone / tablette : récapitulatif toujours visible */}
+      {cart.length > 0 && (
+        <>
+          <div className="h-16 lg:hidden" aria-hidden />
+          <div className="fixed inset-x-0 bottom-[calc(3.9rem+env(safe-area-inset-bottom))] z-30 border-t bg-background/95 px-4 py-2.5 shadow-[0_-4px_16px_rgba(0,0,0,0.06)] backdrop-blur-lg md:bottom-0 md:pb-[calc(0.625rem+env(safe-area-inset-bottom))] lg:hidden">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-muted-foreground">
+                  {cart.reduce((n, l) => n + l.quantity, 0)} article(s) · {formatEuro(totalHT)} HT
+                </div>
+                <div className="text-xl font-bold tabular-nums">{formatEuro(totalTTC)}</div>
+              </div>
+              {remaining === 0 ? (
+                <Button className="h-11 px-5 text-base font-bold" disabled={processing} onClick={checkout}>
+                  {processing ? <Loader2 className="animate-spin" /> : null} Encaisser
+                </Button>
+              ) : (
+                <Button
+                  className="h-11 px-5 text-base font-semibold"
+                  onClick={() => document.getElementById('paiement')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                >
+                  {totalPaid > 0 ? `Reste ${formatEuro(remaining)}` : 'Payer'}
+                </Button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
 
       <CustomerFormDialog
         open={customerDialogOpen}

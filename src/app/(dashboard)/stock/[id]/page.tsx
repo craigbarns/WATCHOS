@@ -149,7 +149,7 @@ export default async function StockItemPage({ params }: { params: Promise<{ id: 
           <ArrowLeft className="size-4" /> Stock
         </Link>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="font-playfair text-3xl font-bold tracking-tight">{title}</h1>
+          <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">{title}</h1>
           <span className={cn('rounded-full px-2.5 py-0.5 text-sm font-semibold', status?.className)}>{status?.label}</span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">

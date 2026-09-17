@@ -68,7 +68,7 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
             <ArrowLeft className="size-4" /> Dossiers SAV
           </Link>
           <div className="flex flex-wrap items-center gap-3">
-            <h1 className="font-mono text-2xl font-bold">{c.case_number}</h1>
+            <h1 className="font-mono text-xl font-bold sm:text-2xl">{c.case_number}</h1>
             <span className={cn('rounded-full px-2.5 py-0.5 text-sm font-semibold', status?.className)}>{status?.label ?? c.status}</span>
             {late && (
               <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2.5 py-0.5 text-sm font-semibold text-destructive">
@@ -87,7 +87,7 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
         {STEPS.map((step, i) => (
           <li key={step} className="space-y-1.5">
             <div className={cn('h-1.5 rounded-full', c.status === 'ANNULE' ? 'bg-muted' : i <= stepIndex ? 'bg-primary' : 'bg-muted')} />
-            <div className={cn('text-xs', i === stepIndex ? 'font-semibold' : 'text-muted-foreground')}>{SAV_STATUS[step].label}</div>
+            <div className={cn('text-[10px] leading-tight sm:text-xs', i === stepIndex ? 'font-semibold' : 'text-muted-foreground max-sm:hidden')}>{SAV_STATUS[step].label}</div>
           </li>
         ))}
       </ol>

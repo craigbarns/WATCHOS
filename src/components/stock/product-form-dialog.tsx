@@ -158,7 +158,7 @@ function ProductForm({ onClose, onCreated }: { onClose: () => void; onCreated?: 
           </div>
         </>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <Field label="SKU" id="sku">
             <Input id="sku" value={values.sku} onChange={set('sku')} />
           </Field>
@@ -171,7 +171,7 @@ function ProductForm({ onClose, onCreated }: { onClose: () => void; onCreated?: 
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-3 rounded-lg border p-3">
+      <div className="grid grid-cols-2 gap-3 rounded-lg border p-3 sm:grid-cols-3">
         <Field label="Prix d'achat TTC" id="purchase_price_ttc">
           <Input id="purchase_price_ttc" type="number" min={0} step="0.01" value={(values.purchase_price_ttc as number | undefined) ?? ''} onChange={set('purchase_price_ttc')} />
           <span className="text-xs text-muted-foreground tabular-nums">{purchase > 0 ? `${formatEuro(toHT(purchase, vatRate))} HT` : '\u00a0'}</span>
@@ -189,7 +189,7 @@ function ProductForm({ onClose, onCreated }: { onClose: () => void; onCreated?: 
           </select>
         </Field>
         {margin !== null && (
-          <p className={cn('col-span-3 text-xs', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-destructive')}>
+          <p className={cn('col-span-2 text-xs sm:col-span-3', margin >= 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-destructive')}>
             Marge brute HT : {formatEuro(margin)} ({((margin / toHT(selling, vatRate)) * 100).toFixed(1)} % du prix de vente HT)
           </p>
         )}

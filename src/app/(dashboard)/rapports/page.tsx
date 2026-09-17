@@ -30,7 +30,7 @@ export default async function RapportsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-playfair text-3xl font-bold tracking-tight">Rapports &amp; clôtures</h1>
+          <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Rapports &amp; clôtures</h1>
           <p className="text-sm text-muted-foreground">Conformité anti-fraude TVA : inaltérabilité, sécurisation, conservation, archivage.</p>
         </div>
         <a

@@ -81,7 +81,7 @@ function CustomerForm({
             <DialogDescription>Les champs marqués * sont obligatoires.</DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-[5rem_1fr_1fr] gap-3">
+          <div className="grid grid-cols-[4.5rem_1fr] gap-3 sm:grid-cols-[5rem_1fr_1fr]">
             <div className="grid gap-1.5">
               <Label htmlFor="civility">Civilité</Label>
               <select
@@ -99,13 +99,13 @@ function CustomerForm({
               <Label htmlFor="first_name">Prénom *</Label>
               <Input id="first_name" required autoFocus value={values.first_name} onChange={set('first_name')} />
             </div>
-            <div className="grid gap-1.5">
+            <div className="grid gap-1.5 max-sm:col-span-2">
               <Label htmlFor="last_name">Nom *</Label>
               <Input id="last_name" required value={values.last_name} onChange={set('last_name')} />
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid gap-3 sm:grid-cols-2">
             <div className="grid gap-1.5">
               <Label htmlFor="phone">Téléphone</Label>
               <Input id="phone" type="tel" value={values.phone} onChange={set('phone')} />

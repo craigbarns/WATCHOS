@@ -24,8 +24,9 @@ export function Header({ profile }: { profile: Profile }) {
     .toUpperCase()
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-background px-4">
-      <span className="text-sm font-medium text-muted-foreground">
+    <header className="flex h-14 shrink-0 items-center justify-between border-b bg-background/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-lg [box-sizing:content-box]">
+      <span className="font-playfair text-lg font-bold tracking-tight md:hidden">Heure et Passion</span>
+      <span className="hidden text-sm font-medium text-muted-foreground first-letter:uppercase md:inline">
         {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })}
       </span>
       <div className="flex items-center gap-3">
@@ -36,7 +37,7 @@ export function Header({ profile }: { profile: Profile }) {
         <div className="flex size-8 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">
           {initials}
         </div>
-        <Button variant="ghost" size="icon" onClick={handleSignOut} title="Déconnexion">
+        <Button variant="ghost" size="icon" onClick={handleSignOut} title="Déconnexion" className="hidden md:inline-flex">
           <LogOut className="h-5 w-5 text-destructive" />
         </Button>
       </div>
