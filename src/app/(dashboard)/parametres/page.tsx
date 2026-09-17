@@ -4,6 +4,10 @@ import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { SettingsForm } from '@/components/parametres/settings-form'
 import { TeamTable, type TeamMember } from '@/components/parametres/team-table'
+import { AddMemberButton } from '@/components/parametres/team-dialogs'
+import { CardAction } from '@/components/ui/card'
+import { createAdminClient, hasAdminKey } from '@/lib/supabase/admin'
+import { TriangleAlert } from 'lucide-react'
 
 export default async function ParametresPage() {
   const profile = await getCurrentProfile()
@@ -15,7 +19,20 @@ export default async function ParametresPage() {
     supabase.from('profiles').select('id, full_name, role, active, created_at').order('active').order('created_at'),
   ])
 
-  const pendingCount = (members ?? []).filter((m) => !m.active).length
+  // Emails et dernières connexions : uniquement lisibles avec la clé de service (côté serveur)
+  const canManageAccounts = hasAdminKey()
+  const authUsers = new Map<string, { email: string | null; last_sign_in_at: string | null }>()
+  if (canManageAccounts) {
+    const { data } = await createAdminClient().auth.admin.listUsers({ perPage: 200 })
+    for (const u of data?.users ?? []) authUsers.set(u.id, { email: u.email ?? null, last_sign_in_at: u.last_sign_in_at ?? null })
+  }
+  const team: TeamMember[] = (members ?? []).map((m) => ({
+    ...(m as Omit<TeamMember, 'email' | 'last_sign_in_at'>),
+    email: authUsers.get(m.id)?.email ?? (m.id === profile.id ? profile.email : null),
+    last_sign_in_at: authUsers.get(m.id)?.last_sign_in_at ?? null,
+  }))
+
+  const pendingCount = team.filter((m) => !m.active).length
 
   return (
     <div className="max-w-4xl space-y-6">
@@ -46,12 +63,26 @@ export default async function ParametresPage() {
           <CardTitle>Équipe</CardTitle>
           <CardDescription>
             {pendingCount > 0
-              ? `${pendingCount} compte(s) en attente de validation.`
-              : 'Les nouveaux comptes doivent être activés ici avant de pouvoir utiliser la caisse.'}
+              ? `${pendingCount} compte(s) suspendu(s) ou en attente.`
+              : 'Créez ici les comptes de vos vendeurs et techniciens.'}
           </CardDescription>
+          {canManageAccounts && (
+            <CardAction>
+              <AddMemberButton />
+            </CardAction>
+          )}
         </CardHeader>
+        {!canManageAccounts && (
+          <div className="mx-4 mb-4 flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+            <div>
+              La création de comptes nécessite la variable <code className="font-mono">SUPABASE_SERVICE_ROLE_KEY</code> sur le
+              serveur. Ajoutez-la dans Vercel → Settings → Environment Variables, puis redéployez.
+            </div>
+          </div>
+        )}
         <CardContent className="border-t p-0">
-          <TeamTable members={(members ?? []) as TeamMember[]} currentUserId={profile.id} />
+          <TeamTable members={team} currentUserId={profile.id} canManageAccounts={canManageAccounts} />
         </CardContent>
       </Card>
     </div>

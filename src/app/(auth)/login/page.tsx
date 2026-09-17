@@ -13,7 +13,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState<string | null>(null)
   const router = useRouter()
   const supabase = createClient()
 
@@ -21,7 +20,6 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError(null)
-    setSuccess(null)
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -29,31 +27,12 @@ export default function LoginPage() {
     })
 
     if (error) {
-      setError(error.message)
+      setError(/invalid login credentials/i.test(error.message) ? 'Email ou mot de passe incorrect.' : error.message)
       setLoading(false)
     } else {
       router.push('/dashboard')
       router.refresh()
     }
-  }
-
-  const handleSignUp = async () => {
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
-
-    if (error) {
-      setError(error.message)
-    } else if (data.user) {
-      // Le profil est créé par un trigger en base, inactif tant qu'un administrateur ne l'a pas validé
-      setSuccess("Compte créé. Confirmez votre email si nécessaire, puis demandez à un administrateur d'activer votre accès.")
-    }
-    setLoading(false)
   }
 
   const heroImage = "url('https://images.unsplash.com/photo-1523170335258-f5ed11844a49?q=80&w=2080&auto=format&fit=crop')"
@@ -92,11 +71,6 @@ export default function LoginPage() {
                   {error}
                 </div>
               )}
-              {success && (
-                <div className="rounded-md border border-green-100 bg-green-50 p-3 text-sm font-medium text-green-700">
-                  {success}
-                </div>
-              )}
               <div className="space-y-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
@@ -129,9 +103,9 @@ export default function LoginPage() {
               <Button type="submit" className="h-12 w-full bg-black text-base font-medium text-white hover:bg-gray-800 lg:h-11" disabled={loading}>
                 {loading ? 'Chargement...' : 'Se connecter'}
               </Button>
-              <Button type="button" variant="outline" className="h-12 w-full text-base font-medium lg:h-11" onClick={handleSignUp} disabled={loading}>
-                Créer un compte
-              </Button>
+              <p className="text-center text-sm text-muted-foreground">
+                Pas encore de compte ? Demandez à l&apos;administrateur de la boutique de vous en créer un.
+              </p>
             </CardFooter>
           </form>
         </Card>
