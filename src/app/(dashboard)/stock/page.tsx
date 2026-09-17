@@ -1,12 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Search, Plus } from 'lucide-react'
+import { Search, Plus, ChevronRight } from 'lucide-react'
 import { ProductFormDialog } from '@/components/stock/product-form-dialog'
 import { formatEuro, ITEM_STATUS, toHT } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -78,7 +79,7 @@ async function loadStock(): Promise<StockRow[]> {
           price: Number(p.selling_price_ttc),
           cost: p.purchase_price_ttc === null ? null : Number(p.purchase_price_ttc),
             vatRate: Number(p.vat_rate),
-          status: p.stock_quantity > 0 ? 'AVAILABLE' : 'SOLD',
+          status: p.stock_quantity > 0 ? 'AVAILABLE' : 'OUT',
         })
       }
     }
@@ -87,8 +88,12 @@ async function loadStock(): Promise<StockRow[]> {
 
 const FILTERS = [
   { value: 'AVAILABLE', label: 'Disponible' },
-  { value: 'ALL', label: 'Tout' },
+  { value: 'RESERVED', label: 'Réservé' },
+  { value: 'IN_SAV', label: 'En SAV' },
   { value: 'SOLD', label: 'Vendu' },
+  { value: 'OUT', label: 'Rupture' },
+  { value: 'ARCHIVED', label: 'Archivé' },
+  { value: 'ALL', label: 'Tout' },
 ] as const
 
 export default function StockPage() {
@@ -97,6 +102,7 @@ export default function StockPage() {
   const [items, setItems] = useState<StockRow[]>([])
   const [loading, setLoading] = useState(true)
   const [dialogOpen, setDialogOpen] = useState(false)
+  const router = useRouter()
 
   const fetchStock = useCallback(async () => {
     setItems(await loadStock())
@@ -124,6 +130,12 @@ export default function StockPage() {
         `${item.brand} ${item.model} ${item.ref} ${item.serial}`.toLowerCase().includes(term)
     )
   }, [items, search, filter])
+
+  const counts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const i of items) c[i.status] = (c[i.status] ?? 0) + 1
+    return c
+  }, [items])
 
   const totalValue = filteredItems.reduce((s, i) => s + i.price * i.quantity, 0)
   const totalValueHT = filteredItems.reduce((s, i) => s + toHT(i.price, i.vatRate) * i.quantity, 0)
@@ -155,7 +167,7 @@ export default function StockPage() {
             />
           </div>
           <div className="flex rounded-lg bg-muted p-0.5">
-            {FILTERS.map((f) => (
+            {FILTERS.filter((f) => f.value === 'AVAILABLE' || f.value === 'ALL' || (counts[f.value] ?? 0) > 0 || filter === f.value).map((f) => (
               <button
                 key={f.value}
                 type="button"
@@ -166,6 +178,7 @@ export default function StockPage() {
                 )}
               >
                 {f.label}
+                {f.value !== 'ALL' && <span className="ml-1 text-xs opacity-60">{counts[f.value] ?? 0}</span>}
               </button>
             ))}
           </div>
@@ -195,7 +208,7 @@ export default function StockPage() {
                 </TableRow>
               ) : (
                 filteredItems.map((item) => (
-                  <TableRow key={item.id}>
+                  <TableRow key={item.id} className="cursor-pointer" onClick={() => router.push(`/stock/${item.id}`)}>
                     <TableCell className="pl-4">
                       <div className="font-medium">
                         {item.brand} {item.model}
@@ -211,9 +224,10 @@ export default function StockPage() {
                       {item.cost === null ? '—' : formatEuro(toHT(item.price, item.vatRate) - toHT(item.cost, item.vatRate))}
                     </TableCell>
                     <TableCell className="pr-4">
-                      <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', ITEM_STATUS[item.status]?.className)}>
-                        {item.kind === 'accessory' && item.status === 'SOLD' ? 'Rupture' : ITEM_STATUS[item.status]?.label ?? item.status}
+                      <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', item.status === 'OUT' ? 'bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300' : ITEM_STATUS[item.status]?.className)}>
+                        {item.status === 'OUT' ? 'Rupture' : ITEM_STATUS[item.status]?.label ?? item.status}
                       </span>
+                      <ChevronRight className="ml-2 inline size-4 text-muted-foreground" />
                     </TableCell>
                   </TableRow>
                 ))

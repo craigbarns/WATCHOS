@@ -78,6 +78,21 @@ export default function CaissePage() {
   const totalPaid = cents(payments.reduce((s, p) => s + p.amount, 0))
   const remaining = cents(totalTTC - totalPaid)
 
+  // Ouverture depuis une fiche produit : /caisse?serie=XXXX ajoute directement la montre
+  const preloaded = useRef(false)
+  useEffect(() => {
+    if (preloaded.current) return
+    preloaded.current = true
+    const serial = new URLSearchParams(window.location.search).get('serie')
+    if (!serial) return
+    window.history.replaceState(null, '', '/caisse')
+    searchCatalog(serial).then((items) => {
+      const match = items.find((i) => i.serial_number?.toLowerCase() === serial.toLowerCase())
+      if (match) setCart((c) => (c.some((l) => l.key === match.key) ? c : [...c, { ...match, quantity: 1, discount: 0 }]))
+      else setError(`La montre ${serial} n'est pas disponible à la vente.`)
+    })
+  }, [])
+
   // Toute modification du panier invalide la clé d'idempotence de la tentative précédente
   useEffect(() => {
     idempotencyKey.current = crypto.randomUUID()
