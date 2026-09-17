@@ -155,7 +155,8 @@ export default async function DashboardPage() {
             ) : (
               <ul className="divide-y">
                 {(recentSav.data as unknown as RecentSav[]).map((sav) => (
-                  <li key={sav.id} className="flex items-center justify-between py-2.5 text-sm">
+                  <li key={sav.id}>
+                    <Link href={`/sav/${sav.id}`} className="-mx-2 flex items-center justify-between rounded-md px-2 py-2.5 text-sm hover:bg-muted">
                     <div>
                       <div className="font-mono text-xs">{sav.case_number}</div>
                       <div className="text-muted-foreground">
@@ -165,6 +166,7 @@ export default async function DashboardPage() {
                     <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', SAV_STATUS[sav.status]?.className)}>
                       {SAV_STATUS[sav.status]?.label ?? sav.status}
                     </span>
+                    </Link>
                   </li>
                 ))}
               </ul>

@@ -148,3 +148,16 @@
     width: 80mm;
   }
 }
+
+@media print {
+  .print-a5 {
+    width: 148mm;
+  }
+  @page a5 {
+    size: A5;
+    margin: 8mm;
+  }
+  .print-a5 {
+    page: a5;
+  }
+}

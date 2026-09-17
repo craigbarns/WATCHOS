@@ -1,13 +1,15 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Search, Plus } from 'lucide-react'
-import { SAV_STATUS } from '@/lib/format'
+import { Search, Plus, AlertTriangle } from 'lucide-react'
+import { SavCreateDialog, type Technician } from '@/components/sav/sav-create-dialog'
+import { formatDate, parisDay, SAV_CLOSED_STATUSES, SAV_STATUS } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 type SavCase = {
@@ -15,97 +17,194 @@ type SavCase = {
   case_number: string
   brand: string | null
   model: string | null
+  serial_number: string | null
   status: string
-  created_at: string
-  customer: { first_name: string; last_name: string } | null
+  deposit_date: string
+  estimated_date: string | null
+  customer: { first_name: string; last_name: string; phone: string | null } | null
+  technician: { full_name: string } | null
+}
+
+const FILTERS = [
+  { value: 'OPEN', label: 'En cours' },
+  { value: 'READY', label: 'Prêts' },
+  { value: 'CLOSED', label: 'Clôturés' },
+  { value: 'ALL', label: 'Tous' },
+] as const
+
+async function loadSav() {
+  const supabase = createClient()
+  const [{ data: cases }, { data: technicians }] = await Promise.all([
+    supabase
+      .from('sav_cases')
+      .select('id, case_number, brand, model, serial_number, status, deposit_date, estimated_date, customer:customers(first_name, last_name, phone), technician:profiles(full_name)')
+      .order('created_at', { ascending: false }),
+    supabase.from('profiles').select('id, full_name, role').eq('active', true).order('full_name'),
+  ])
+  return {
+    cases: (cases ?? []) as unknown as SavCase[],
+    // Techniciens en premier, puis le reste de l'équipe (petites boutiques : le gérant répare aussi)
+    technicians: [...(technicians ?? [])].sort((a, b) => Number(b.role === 'TECHNICIEN') - Number(a.role === 'TECHNICIEN')) as Technician[],
+  }
 }
 
 export default function SavPage() {
+  const router = useRouter()
   const [search, setSearch] = useState('')
+  const [filter, setFilter] = useState<(typeof FILTERS)[number]['value']>('OPEN')
   const [cases, setCases] = useState<SavCase[]>([])
+  const [technicians, setTechnicians] = useState<Technician[]>([])
   const [loading, setLoading] = useState(true)
+  const [dialogOpen, setDialogOpen] = useState(false)
 
   useEffect(() => {
-    async function fetchCases() {
-      const { data } = await createClient()
-        .from('sav_cases')
-        .select(`
-          *,
-          customer:customers(first_name, last_name)
-        `)
-        .order('created_at', { ascending: false })
-      
-      setCases((data ?? []) as unknown as SavCase[])
+    let ignore = false
+    loadSav().then((data) => {
+      if (ignore) return
+      setCases(data.cases)
+      setTechnicians(data.technicians)
       setLoading(false)
+    })
+    return () => {
+      ignore = true
     }
-    fetchCases()
   }, [])
 
-  const filteredCases = cases.filter(c => 
-    `${c.case_number} ${c.brand} ${c.model} ${c.customer?.first_name} ${c.customer?.last_name}`.toLowerCase().includes(search.toLowerCase())
+  const today = parisDay()
+
+  const counts = useMemo(
+    () => ({
+      OPEN: cases.filter((c) => !SAV_CLOSED_STATUSES.includes(c.status)).length,
+      READY: cases.filter((c) => ['PRET', 'CLIENT_PREVENU'].includes(c.status)).length,
+      CLOSED: cases.filter((c) => SAV_CLOSED_STATUSES.includes(c.status)).length,
+      ALL: cases.length,
+    }),
+    [cases]
   )
+
+  const filteredCases = useMemo(() => {
+    const term = search.toLowerCase()
+    return cases.filter((c) => {
+      const matchesFilter =
+        filter === 'ALL' ||
+        (filter === 'OPEN' && !SAV_CLOSED_STATUSES.includes(c.status)) ||
+        (filter === 'READY' && ['PRET', 'CLIENT_PREVENU'].includes(c.status)) ||
+        (filter === 'CLOSED' && SAV_CLOSED_STATUSES.includes(c.status))
+      const haystack = `${c.case_number} ${c.brand} ${c.model} ${c.serial_number} ${c.customer?.first_name} ${c.customer?.last_name} ${c.customer?.phone}`
+      return matchesFilter && haystack.toLowerCase().includes(term)
+    })
+  }, [cases, search, filter])
+
+  const openCase = useCallback((id: string) => router.push(`/sav/${id}`), [router])
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="font-playfair text-3xl font-bold tracking-tight">Service après-vente</h1>
-        <Button disabled title="Prochaine étape : création et suivi des dossiers SAV" className="h-9">
-          <Plus /> Créer un dossier SAV
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="font-playfair text-3xl font-bold tracking-tight">Service après-vente</h1>
+          <p className="text-sm text-muted-foreground">
+            {counts.OPEN} dossier(s) en cours · {counts.READY} prêt(s) à restituer
+          </p>
+        </div>
+        <Button onClick={() => setDialogOpen(true)} className="h-9">
+          <Plus /> Nouveau dossier SAV
         </Button>
       </div>
 
-      <Card>
-        <CardHeader className="py-3 flex flex-row items-center gap-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+      <Card className="gap-0 py-0">
+        <CardHeader className="flex flex-row flex-wrap items-center gap-3 border-b py-3">
+          <div className="relative min-w-60 flex-1">
+            <Search className="absolute top-2 left-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="N° SAV, Client, Marque, N° de série..."
-              className="pl-8 w-full max-w-md"
+              placeholder="N° dossier, client, téléphone, marque, n° de série…"
+              className="w-full max-w-md pl-8"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+          </div>
+          <div className="flex rounded-lg bg-muted p-0.5">
+            {FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                onClick={() => setFilter(f.value)}
+                className={cn('rounded-md px-3 py-1 text-sm font-medium', filter === f.value ? 'bg-background shadow-sm' : 'text-muted-foreground')}
+              >
+                {f.label} <span className="text-xs opacity-60">{counts[f.value]}</span>
+              </button>
+            ))}
           </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>N° Dossier</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead className="pl-4">N° dossier</TableHead>
+                <TableHead>Dépôt</TableHead>
                 <TableHead>Client</TableHead>
                 <TableHead>Montre</TableHead>
-                <TableHead>Statut</TableHead>
+                <TableHead>Technicien</TableHead>
+                <TableHead>Prévu le</TableHead>
+                <TableHead className="pr-4">Statut</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8">Chargement des dossiers...</TableCell>
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">Chargement des dossiers…</TableCell>
                 </TableRow>
               ) : filteredCases.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">Aucun dossier trouvé</TableCell>
+                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                    {cases.length === 0 ? 'Aucun dossier SAV. Créez le premier avec « Nouveau dossier SAV ».' : 'Aucun dossier trouvé'}
+                  </TableCell>
                 </TableRow>
               ) : (
-                filteredCases.map((sav) => (
-                  <TableRow key={sav.id} className="cursor-pointer hover:bg-muted/50">
-                    <TableCell className="font-medium font-mono">{sav.case_number}</TableCell>
-                    <TableCell>{new Date(sav.created_at).toLocaleDateString('fr-FR')}</TableCell>
-                    <TableCell>{sav.customer?.first_name} {sav.customer?.last_name}</TableCell>
-                    <TableCell>{sav.brand} {sav.model}</TableCell>
-                    <TableCell>
-                      <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', SAV_STATUS[sav.status]?.className)}>
-                        {SAV_STATUS[sav.status]?.label ?? sav.status}
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))
+                filteredCases.map((sav) => {
+                  const late = sav.estimated_date && sav.estimated_date < today && !SAV_CLOSED_STATUSES.includes(sav.status)
+                  return (
+                    <TableRow key={sav.id} className="cursor-pointer" onClick={() => openCase(sav.id)}>
+                      <TableCell className="pl-4 font-mono font-medium">{sav.case_number}</TableCell>
+                      <TableCell>{formatDate(sav.deposit_date)}</TableCell>
+                      <TableCell>
+                        <div>
+                          {sav.customer?.first_name} {sav.customer?.last_name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{sav.customer?.phone}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div>
+                          {sav.brand} {sav.model}
+                        </div>
+                        {sav.serial_number && <div className="font-mono text-xs text-muted-foreground">{sav.serial_number}</div>}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">{sav.technician?.full_name ?? '—'}</TableCell>
+                      <TableCell className={cn(late && 'font-medium text-destructive')}>
+                        {sav.estimated_date ? (
+                          <span className="inline-flex items-center gap-1">
+                            {late && <AlertTriangle className="size-3.5" />}
+                            {formatDate(sav.estimated_date)}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                      </TableCell>
+                      <TableCell className="pr-4">
+                        <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap', SAV_STATUS[sav.status]?.className)}>
+                          {SAV_STATUS[sav.status]?.label ?? sav.status}
+                        </span>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
+
+      <SavCreateDialog open={dialogOpen} onOpenChange={setDialogOpen} technicians={technicians} onCreated={openCase} />
     </div>
   )
 }
