@@ -2,7 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/auth'
-import { createAdminClient } from '@/lib/supabase/admin'
+import { ARCHIVED_EMAIL_DOMAIN, createAdminClient, hasAdminKey, isArchivedUser } from '@/lib/supabase/admin'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -53,6 +53,14 @@ export async function updateUser(input: z.input<typeof userSchema>): Promise<Res
   if (!parsed.success) return { success: false, error: 'Données invalides.' }
   if (parsed.data.id === guard.profile.id && (!parsed.data.active || parsed.data.role !== 'ADMIN')) {
     return { success: false, error: 'Vous ne pouvez pas retirer vos propres droits administrateur.' }
+  }
+
+  // Un compte supprimé (archivé) ne peut pas être réactivé
+  if (parsed.data.active && hasAdminKey()) {
+    const { data } = await createAdminClient().auth.admin.getUserById(parsed.data.id)
+    if (data.user && isArchivedUser(data.user)) {
+      return { success: false, error: 'Ce compte a été supprimé : créez un nouveau compte pour cette personne.' }
+    }
   }
 
   const supabase = await createClient()
@@ -134,4 +142,89 @@ export async function resetStaffPassword(input: z.input<typeof resetPasswordSche
     return { success: false, error: authErrorMessage((e as Error).message) }
   }
   return { success: true }
+}
+
+// ---------------------------------------------------------------------
+// Suppression d'un membre
+//  - aucune activité enregistrée : suppression définitive du compte
+//  - activité (ventes, clôtures, stock, SAV) : les enregistrements fiscaux
+//    doivent garder leur auteur, donc le compte est archivé : accès bloqué
+//    définitivement, email libéré, nom conservé sur l'historique
+// ---------------------------------------------------------------------
+
+const ACTIVITY_SOURCES: Array<{ table: string; column: string; label: string }> = [
+  { table: 'sales', column: 'user_id', label: 'vente(s)' },
+  { table: 'fiscal_closures', column: 'created_by', label: 'clôture(s)' },
+  { table: 'stock_movements', column: 'user_id', label: 'mouvement(s) de stock' },
+  { table: 'sav_events', column: 'user_id', label: 'action(s) SAV' },
+  { table: 'sav_cases', column: 'technician_id', label: 'dossier(s) SAV attribué(s)' },
+  { table: 'sav_photos', column: 'user_id', label: 'photo(s) SAV' },
+]
+
+export type MemberActivity = { total: number; details: string[] }
+
+async function countActivity(userId: string): Promise<MemberActivity> {
+  const admin = createAdminClient()
+  const counts = await Promise.all(
+    ACTIVITY_SOURCES.map(async (src) => {
+      const { count, error } = await admin.from(src.table).select('*', { count: 'exact', head: true }).eq(src.column, userId)
+      if (error) throw new Error(error.message)
+      return { ...src, count: count ?? 0 }
+    })
+  )
+  return {
+    total: counts.reduce((n, c) => n + c.count, 0),
+    details: counts.filter((c) => c.count > 0).map((c) => `${c.count} ${c.label}`),
+  }
+}
+
+export async function getMemberActivity(userId: string): Promise<{ success: true; activity: MemberActivity } | { success: false; error: string }> {
+  const guard = await requireStaff(['ADMIN'])
+  if (!guard.ok) return { success: false, error: guard.error }
+  if (!z.guid().safeParse(userId).success) return { success: false, error: 'Identifiant invalide.' }
+  try {
+    return { success: true, activity: await countActivity(userId) }
+  } catch (e) {
+    return { success: false, error: authErrorMessage((e as Error).message) }
+  }
+}
+
+export async function deleteStaffMember(userId: string): Promise<{ success: true; mode: 'deleted' | 'archived' } | { success: false; error: string }> {
+  const guard = await requireStaff(['ADMIN'])
+  if (!guard.ok) return { success: false, error: guard.error }
+  if (!z.guid().safeParse(userId).success) return { success: false, error: 'Identifiant invalide.' }
+  if (userId === guard.profile.id) return { success: false, error: 'Vous ne pouvez pas supprimer votre propre compte.' }
+
+  try {
+    const admin = createAdminClient()
+    const activity = await countActivity(userId)
+
+    if (activity.total === 0) {
+      // Le profil est supprimé en cascade avec le compte
+      const { error } = await admin.auth.admin.deleteUser(userId)
+      if (error) return { success: false, error: authErrorMessage(error.message) }
+      revalidatePath('/parametres')
+      return { success: true, mode: 'deleted' }
+    }
+
+    const { error: authError } = await admin.auth.admin.updateUserById(userId, {
+      email: `supprime+${userId}@${ARCHIVED_EMAIL_DOMAIN}`,
+      email_confirm: true,
+      password: crypto.randomUUID() + crypto.randomUUID(),
+      ban_duration: '876000h', // ~100 ans
+      user_metadata: { archived_at: new Date().toISOString() },
+    })
+    if (authError) return { success: false, error: authErrorMessage(authError.message) }
+
+    const { error: profileError } = await admin
+      .from('profiles')
+      .update({ active: false, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+    if (profileError) return { success: false, error: profileError.message }
+
+    revalidatePath('/parametres')
+    return { success: true, mode: 'archived' }
+  } catch (e) {
+    return { success: false, error: authErrorMessage((e as Error).message) }
+  }
 }

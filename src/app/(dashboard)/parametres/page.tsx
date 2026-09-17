@@ -6,7 +6,7 @@ import { SettingsForm } from '@/components/parametres/settings-form'
 import { TeamTable, type TeamMember } from '@/components/parametres/team-table'
 import { AddMemberButton } from '@/components/parametres/team-dialogs'
 import { CardAction } from '@/components/ui/card'
-import { createAdminClient, hasAdminKey } from '@/lib/supabase/admin'
+import { createAdminClient, hasAdminKey, isArchivedUser } from '@/lib/supabase/admin'
 import { TriangleAlert } from 'lucide-react'
 
 export default async function ParametresPage() {
@@ -22,16 +22,22 @@ export default async function ParametresPage() {
   // Emails et dernières connexions : uniquement lisibles avec la clé de service (côté serveur)
   const canManageAccounts = hasAdminKey()
   const authUsers = new Map<string, { email: string | null; last_sign_in_at: string | null }>()
+  const archivedIds = new Set<string>()
   if (canManageAccounts) {
     const { data } = await createAdminClient().auth.admin.listUsers({ perPage: 200 })
-    for (const u of data?.users ?? []) authUsers.set(u.id, { email: u.email ?? null, last_sign_in_at: u.last_sign_in_at ?? null })
+    for (const u of data?.users ?? []) {
+      authUsers.set(u.id, { email: u.email ?? null, last_sign_in_at: u.last_sign_in_at ?? null })
+      if (isArchivedUser(u)) archivedIds.add(u.id)
+    }
   }
-  const team: TeamMember[] = (members ?? []).map((m) => ({
+  const allMembers: TeamMember[] = (members ?? []).map((m) => ({
     ...(m as Omit<TeamMember, 'email' | 'last_sign_in_at'>),
     email: authUsers.get(m.id)?.email ?? (m.id === profile.id ? profile.email : null),
     last_sign_in_at: authUsers.get(m.id)?.last_sign_in_at ?? null,
   }))
 
+  const team = allMembers.filter((m) => !archivedIds.has(m.id))
+  const formerMembers = allMembers.filter((m) => archivedIds.has(m.id))
   const pendingCount = team.filter((m) => !m.active).length
 
   return (
@@ -83,6 +89,18 @@ export default async function ParametresPage() {
         )}
         <CardContent className="border-t p-0">
           <TeamTable members={team} currentUserId={profile.id} canManageAccounts={canManageAccounts} />
+          {formerMembers.length > 0 && (
+            <details className="border-t px-4 py-3 text-sm">
+              <summary className="cursor-pointer text-muted-foreground">Anciens membres ({formerMembers.length})</summary>
+              <ul className="mt-2 space-y-1 text-muted-foreground">
+                {formerMembers.map((m) => (
+                  <li key={m.id}>
+                    {m.full_name} · compte fermé, conservé pour l&apos;historique des ventes
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
         </CardContent>
       </Card>
     </div>

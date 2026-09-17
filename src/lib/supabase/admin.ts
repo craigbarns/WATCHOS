@@ -18,3 +18,10 @@ export function createAdminClient() {
 }
 
 export const hasAdminKey = () => Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+
+/** Domaine réservé (RFC 2606) utilisé pour libérer l'email d'un compte archivé. */
+export const ARCHIVED_EMAIL_DOMAIN = 'archive.invalid'
+
+export function isArchivedUser(user: { email?: string | null; banned_until?: string | null }) {
+  return Boolean(user.email?.endsWith(`@${ARCHIVED_EMAIL_DOMAIN}`))
+}

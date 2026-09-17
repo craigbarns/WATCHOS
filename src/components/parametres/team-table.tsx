@@ -6,7 +6,7 @@ import { toast } from '@/components/ui/toast'
 import { ROLE_LABELS } from '@/lib/format'
 import type { Role } from '@/lib/auth'
 import { cn } from '@/lib/utils'
-import { ResetPasswordButton } from '@/components/parametres/team-dialogs'
+import { DeleteMemberButton, ResetPasswordButton } from '@/components/parametres/team-dialogs'
 
 export type TeamMember = { id: string; full_name: string; role: Role; active: boolean; created_at: string; email: string | null; last_sign_in_at: string | null }
 
@@ -66,6 +66,7 @@ export function TeamTable({ members, currentUserId, canManageAccounts }: { membe
                 {m.active ? 'Actif' : 'Suspendu — activer'}
               </button>
               {canManageAccounts && <ResetPasswordButton memberId={m.id} name={m.full_name} email={m.email} />}
+              {canManageAccounts && !self && <DeleteMemberButton memberId={m.id} name={m.full_name} />}
             </div>
           </li>
         )
