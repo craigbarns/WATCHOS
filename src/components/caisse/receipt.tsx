@@ -1,8 +1,10 @@
 import type { ReceiptData } from '@/app/actions/caisse'
-import { formatDateTime, formatEuro, PAYMENT_LABELS } from '@/lib/format'
+import { formatDateAndTime, formatEuro, PAYMENT_LABELS } from '@/lib/format'
 
 /** Ticket de caisse pour imprimante thermique (80 / 58 mm), imprimé via printElement. */
 export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; duplicate?: boolean }) {
+  const purchase = formatDateAndTime(receipt.finalized_at)
+  const reprint = duplicate ? formatDateAndTime() : null
   const vatBreakdown = new Map<number, { ht: number; ttc: number }>()
   for (const line of receipt.lines) {
     const ht = line.total_ht ?? line.total_ttc / (1 + line.vat_rate / 100)
@@ -27,10 +29,26 @@ export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; 
         <div className="mt-2 border-2 border-black py-0.5 text-center text-sm font-bold tracking-[0.3em]">DUPLICATA</div>
       )}
       <div className="my-2 border-t border-dashed border-black" />
-      <div className="flex justify-between">
-        <span>Ticket {receipt.receipt_number}</span>
-        <span>{formatDateTime(receipt.finalized_at)}</span>
+      <div className="flex justify-between font-semibold">
+        <span>Ticket n°</span>
+        <span>{receipt.receipt_number}</span>
       </div>
+      <div className="flex justify-between">
+        <span>Date d&apos;achat</span>
+        <span>{purchase.date}</span>
+      </div>
+      <div className="flex justify-between">
+        <span>Heure d&apos;achat</span>
+        <span>{purchase.time}</span>
+      </div>
+      {reprint && (
+        <div className="flex justify-between">
+          <span>Réimprimé le</span>
+          <span>
+            {reprint.date} à {reprint.time}
+          </span>
+        </div>
+      )}
       {receipt.seller && <div>Vendeur : {receipt.seller}</div>}
       {receipt.customer && (
         <div>

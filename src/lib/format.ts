@@ -17,6 +17,15 @@ export function formatDateTime(value: string | Date): string {
   })
 }
 
+/** Date longue et heure à la seconde, heure de Paris : { date: '17/09/2026', time: '14:32:05' } */
+export function formatDateAndTime(value: string | Date = new Date()): { date: string; time: string } {
+  const d = new Date(value)
+  return {
+    date: d.toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris', day: '2-digit', month: '2-digit', year: 'numeric' }),
+    time: d.toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+  }
+}
+
 export function formatDate(value: string | Date): string {
   return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })
 }
