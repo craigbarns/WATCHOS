@@ -1,0 +1,94 @@
+import type { ReceiptData } from '@/app/actions/caisse'
+import { formatDateTime, formatEuro, PAYMENT_LABELS } from '@/lib/format'
+
+/** Ticket de caisse au format 80 mm (imprimable via window.print). */
+export function Receipt({ receipt }: { receipt: ReceiptData }) {
+  const vatBreakdown = new Map<number, { ht: number; ttc: number }>()
+  for (const line of receipt.lines) {
+    const ht = line.total_ht ?? line.total_ttc / (1 + line.vat_rate / 100)
+    const entry = vatBreakdown.get(line.vat_rate) ?? { ht: 0, ttc: 0 }
+    entry.ht += ht
+    entry.ttc += line.total_ttc
+    vatBreakdown.set(line.vat_rate, entry)
+  }
+
+  return (
+    <div className="print-area mx-auto w-full max-w-[80mm] bg-white p-4 font-mono text-[11px] leading-relaxed text-black">
+      <div className="text-center">
+        <div className="font-playfair text-lg font-bold">{receipt.store?.store_name ?? 'Heure et Passion'}</div>
+        {receipt.store?.company_name && <div>{receipt.store.company_name}</div>}
+        {receipt.store?.address && <div className="whitespace-pre-line">{receipt.store.address}</div>}
+        {receipt.store?.phone && <div>Tél. {receipt.store.phone}</div>}
+        {receipt.store?.siret && <div>SIRET {receipt.store.siret}</div>}
+        {receipt.store?.vat_number && <div>TVA {receipt.store.vat_number}</div>}
+      </div>
+
+      <div className="my-2 border-t border-dashed border-black" />
+      <div className="flex justify-between">
+        <span>Ticket {receipt.receipt_number}</span>
+        <span>{formatDateTime(receipt.finalized_at)}</span>
+      </div>
+      {receipt.seller && <div>Vendeur : {receipt.seller}</div>}
+      {receipt.customer && (
+        <div>
+          Client : {receipt.customer.first_name} {receipt.customer.last_name}
+        </div>
+      )}
+      <div className="my-2 border-t border-dashed border-black" />
+
+      {receipt.lines.map((line, i) => (
+        <div key={i} className="mb-1.5">
+          <div className="font-semibold">{line.label}</div>
+          {line.serial_number && <div>N° série : {line.serial_number}</div>}
+          <div className="flex justify-between">
+            <span>
+              {line.quantity} × {formatEuro(line.unit_price_ttc)}
+            </span>
+            <span>{formatEuro(line.unit_price_ttc * line.quantity)}</span>
+          </div>
+          {line.discount_amount > 0 && (
+            <div className="flex justify-between">
+              <span>Remise</span>
+              <span>-{formatEuro(line.discount_amount)}</span>
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div className="my-2 border-t border-dashed border-black" />
+      <div className="flex justify-between text-sm font-bold">
+        <span>TOTAL TTC</span>
+        <span>{formatEuro(receipt.total_ttc)}</span>
+      </div>
+      <div className="mt-1">
+        {[...vatBreakdown.entries()].map(([rate, v]) => (
+          <div key={rate} className="flex justify-between">
+            <span>
+              TVA {rate} % sur {formatEuro(v.ht)}
+            </span>
+            <span>{formatEuro(v.ttc - v.ht)}</span>
+          </div>
+        ))}
+        <div className="flex justify-between">
+          <span>Total HT</span>
+          <span>{formatEuro(receipt.total_ht)}</span>
+        </div>
+      </div>
+
+      <div className="my-2 border-t border-dashed border-black" />
+      {receipt.payments.map((p, i) => (
+        <div key={i} className="flex justify-between">
+          <span>{PAYMENT_LABELS[p.method] ?? p.method}</span>
+          <span>{formatEuro(p.amount)}</span>
+        </div>
+      ))}
+
+      <div className="my-2 border-t border-dashed border-black" />
+      <div className="text-center text-[9px] break-all">
+        {receipt.sequence_number !== null && <div>Opération n° {receipt.sequence_number}</div>}
+        {receipt.hash && <div>Empreinte : {receipt.hash.slice(0, 16)}…{receipt.hash.slice(-8)}</div>}
+        <div className="mt-2 text-[11px]">Merci de votre visite</div>
+      </div>
+    </div>
+  )
+}
