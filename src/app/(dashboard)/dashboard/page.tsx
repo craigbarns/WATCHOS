@@ -79,7 +79,10 @@ export default async function DashboardPage() {
     },
   ]
 
-  const hour = Number(new Date().toLocaleString('fr-FR', { hour: 'numeric', hour12: false, timeZone: 'Europe/Paris' }))
+  // Le format français complet contient « h » : lire uniquement la partie numérique.
+  const hour = Number(new Intl.DateTimeFormat('fr-FR', {
+    hour: 'numeric', hourCycle: 'h23', timeZone: 'Europe/Paris',
+  }).formatToParts(new Date()).find((part) => part.type === 'hour')?.value)
 
   return (
     <div className="space-y-6">
