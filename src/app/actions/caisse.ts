@@ -13,28 +13,20 @@ export type PaymentInput = {
   amount: number
 }
 
-/** Seuls les identifiants, quantités et remises partent du navigateur : les prix sont relus en base. */
+/** Le montant TTC est saisi en caisse ; le poste et la TVA sont vérifiés en base. */
 export type SaleLineInput = {
-  product_id: string
-  serialized_item_id?: string
+  service_id: string
+  unit_price_ttc: number
   quantity: number
   discount_amount?: number
 }
 
 export type CatalogItem = {
   key: string
-  product_id: string
-  serialized_item_id?: string
-  brand: string | null
+  service_id: string
   model: string
-  reference: string | null
-  sku?: string | null
-  ean?: string | null
-  serial_number?: string
   price_ttc: number
   vat_rate: number
-  stock: number
-  details: string | null
 }
 
 export type CustomerSummary = {
@@ -51,55 +43,13 @@ export async function searchCatalog(query: string): Promise<CatalogItem[]> {
 
   const term = sanitizeTerm(query)
   const supabase = await createClient()
-  const productFilter = `brand.ilike.%${term}%,model.ilike.%${term}%,reference.ilike.%${term}%,sku.ilike.%${term}%,ean.eq.${term}`
-
-  // Limit only after availability filtering: sold references must never hide stock.
-  const watchesQuery = () => supabase
-    .from('serialized_items')
-    .select('id, serial_number, year, has_box, has_papers, product:products!inner(id, brand, model, reference, sku, ean, selling_price_ttc, vat_rate)')
-    .eq('status', 'AVAILABLE')
-    .neq('product.status', 'ARCHIVED')
-    .order('serial_number')
-    .limit(20)
-  let watchesByProduct = watchesQuery()
-  let accessories = supabase.from('products')
-    .select('id, brand, model, reference, sku, ean, selling_price_ttc, vat_rate, stock_quantity')
-    .eq('type', 'NON_SERIALIZED').neq('status', 'ARCHIVED').gt('stock_quantity', 0)
-    .order('brand').order('id').limit(20)
-  if (term) {
-    watchesByProduct = watchesByProduct.or(productFilter, { referencedTable: 'product' })
-    accessories = accessories.or(productFilter)
-  }
-  const [bySerial, byProduct, accessoryResult] = await Promise.all([
-    term ? watchesQuery().ilike('serial_number', `%${term}%`) : Promise.resolve({ data: [], error: null }),
-    watchesByProduct,
-    accessories,
-  ])
-  if (bySerial.error || byProduct.error || accessoryResult.error) throw new Error('Le catalogue est momentanément indisponible.')
-
-  type WatchRow = {
-    id: string; serial_number: string; year: string | null; has_box: boolean; has_papers: boolean
-    product: { id: string; brand: string | null; model: string; reference: string | null; sku: string | null; ean: string | null; selling_price_ttc: number; vat_rate: number }
-  }
-  const items = new Map<string, CatalogItem>()
-  for (const row of [...(bySerial.data ?? []), ...(byProduct.data ?? [])] as unknown as WatchRow[]) {
-    const p = row.product
-    items.set(row.id, {
-      key: row.id, product_id: p.id, serialized_item_id: row.id,
-      brand: p.brand, model: p.model, reference: p.reference, sku: p.sku, ean: p.ean,
-      serial_number: row.serial_number, price_ttc: Number(p.selling_price_ttc), vat_rate: Number(p.vat_rate), stock: 1,
-      details: [row.year, row.has_box && row.has_papers ? 'Full set' : row.has_papers ? 'Papiers' : row.has_box ? 'Boîte' : null].filter(Boolean).join(' · ') || null,
-    })
-  }
-  for (const p of accessoryResult.data ?? []) {
-    items.set(p.id, {
-      key: p.id, product_id: p.id, brand: p.brand, model: p.model, reference: p.reference,
-      sku: p.sku, ean: p.ean, price_ttc: Number(p.selling_price_ttc), vat_rate: Number(p.vat_rate), stock: p.stock_quantity, details: null,
-    })
-  }
-  // Exact barcode/reference matches stay first even when broad searches return 20 watches.
-  const exact = (item: CatalogItem) => [item.serial_number, item.sku, item.ean, item.reference].some((code) => code?.toLowerCase() === term.toLowerCase())
-  return [...items.values()].sort((a, b) => Number(exact(b)) - Number(exact(a))).slice(0, 20)
+  let request = supabase.from('service_categories').select('id, label, vat_rate').eq('active', true).order('sort_order')
+  if (term) request = request.ilike('label', `%${term}%`)
+  const { data, error } = await request
+  if (error) throw new Error('Les prestations sont momentanément indisponibles.')
+  return (data ?? []).map((service) => ({
+    key: service.id, service_id: service.id, model: service.label, price_ttc: 0, vat_rate: Number(service.vat_rate),
+  }))
 }
 
 export async function searchCustomers(query: string): Promise<CustomerSummary[]> {
@@ -124,8 +74,8 @@ const finalizeSchema = z.object({
   lines: z
     .array(
       z.object({
-        product_id: z.guid(),
-        serialized_item_id: z.guid().optional(),
+        service_id: z.guid(),
+        unit_price_ttc: z.number().min(0.01).max(999999.99).refine((v) => Math.abs(v * 100 - Math.round(v * 100)) < 1e-7, 'Deux décimales maximum.'),
         quantity: z.number().int().min(1).max(999),
         discount_amount: z.number().min(0).optional(),
       })
@@ -160,7 +110,7 @@ export async function finalizeSale(
     return { success: false, error: parsed.error.issues[0]?.message ?? 'Données de vente invalides.' }
   }
 
-  // L'opérateur, les prix, la TVA, les totaux et le chaînage fiscal sont
+  // L'opérateur, le poste, la TVA, les totaux et le chaînage fiscal sont
   // déterminés côté base, dans une seule transaction (RPC finalize_sale).
   const supabase = await createClient()
   const { data, error } = await supabase.rpc('finalize_sale', {
@@ -179,6 +129,7 @@ export async function finalizeSale(
   revalidatePath('/dashboard')
   revalidatePath('/stock')
   revalidatePath('/rapports')
+  revalidatePath('/statistiques')
 
   return { success: true, data }
 }

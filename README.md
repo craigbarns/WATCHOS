@@ -1,6 +1,6 @@
 # Heure et Passion — Caisse & SAV
 
-Logiciel de caisse pour horlogerie (montres suivies au numéro de série, accessoires, SAV),
+Logiciel de caisse pour les prestations d’un atelier d’horlogerie, avec suivi SAV et contact WhatsApp,
 conçu pour les exigences anti-fraude TVA : inaltérabilité, sécurisation, conservation, archivage.
 
 Stack : Next.js 16 (App Router) · React 19 · Supabase (Postgres, Auth, RLS) · Tailwind 4 · shadcn/base-ui.
@@ -9,14 +9,15 @@ Stack : Next.js 16 (App Router) · React 19 · Supabase (Postgres, Auth, RLS) ·
 
 1. Variables dans `.env.local` : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 2. Appliquer **dans l'ordre** les fichiers de `supabase/migrations/` (Supabase CLI `supabase db push`, ou SQL Editor).
-3. Le stock et les clients démarrent vides. `supabase/seed.sql` ne crée aucune donnée fictive.
+3. La migration `20260920000000_service_checkout.sql` installe les 11 postes de prestation et les statistiques, sans créer de vente ni de client fictif. Elle préserve les ventes historiques.
 4. `npm install && npm run dev`, puis se connecter sur `/login` avec un compte provisionné dans Supabase Auth.
    Le **premier compte** devient administrateur ; les suivants doivent être activés dans Paramètres → Équipe.
 
 ## Architecture fiscale
 
 - Une vente est créée uniquement par la fonction SQL `finalize_sale` (transaction unique) :
-  prix et TVA relus en base, contrôle stock / numéro de série, paiements = total, idempotence.
+  poste et TVA relus en base, montant TTC saisi par le vendeur et validé en base, paiements = total, idempotence.
+  Les anciennes ventes de produits et leur contrôle de stock restent compatibles.
 - Chaque vente produit un `fiscal_events` chaîné en SHA-256 (hash précédent + format canonique).
 - Numérotation continue (tickets, événements, clôtures) via `fiscal_counters` verrouillé.
 - `close_day` génère la clôture journalière (Z) chaînée avec grand total perpétuel.
@@ -29,17 +30,44 @@ Stack : Next.js 16 (App Router) · React 19 · Supabase (Postgres, Auth, RLS) ·
 | Rôle | Accès |
 | --- | --- |
 | Administrateur | Tout, dont paramètres boutique et gestion de l'équipe |
-| Vendeur | Caisse, stock, clients, SAV, rapports et clôtures |
-| Technicien | Tableau de bord, stock, clients, SAV (lecture/écriture SAV) |
+| Vendeur | Caisse, statistiques, clients, SAV, rapports et clôtures |
+| Technicien | Tableau de bord, clients, SAV (lecture/écriture SAV) |
 
 ## Raccourcis caisse
 
-`F2` ou `/` : recherche / scan · `Entrée` : ajout direct sur correspondance exacte (douchette) · `F9` : encaisser
+`F2` ou `/` : rechercher une prestation · `Entrée` : choisir le seul poste trouvé / valider son montant · `F9` : encaisser
+
+## Prestations et statistiques
+
+La caisse propose : Pile, Bracelet, Pile plus contrôle étanchéité, Changement de verre, Polissage,
+Bracelets sur mesure, Échange standard de mouvement quartz, Révision montre quartz,
+Révision montre automatique, Aiguillage, Intervention partielle.
+
+Chaque ajout demande un montant unitaire TTC (virgule ou point, deux décimales maximum).
+Un même poste peut apparaître plusieurs fois avec des montants différents. Quantités, modification du montant,
+remises, paiements multiples et tickets restent disponibles. Aucune prestation ne décrémente de stock.
+Les postes sont dans `service_categories`, avec une TVA initiale de 20 %, identique au taux habituel de la configuration existante ; ajuster ce taux en base si la boutique utilise un autre taux.
+
+`/statistiques` regroupe les quantités, tickets distincts, CA HT/TTC après remises et part du CA par poste.
+La période inclut les deux dates, en heure de Paris (changements d’heure compris). L’agrégation se fait en SQL,
+sans plafond de 1 000 lignes. Les ventes historiques de produits restent dans les rapports fiscaux.
+
+## WhatsApp pour les SAV prêts
+
+Au statut **Prêt**, la fiche propose **Envoyer par WhatsApp** avec le prénom du client, la montre,
+le numéro de dossier et les coordonnées de la boutique. Les numéros français et internationaux sont normalisés.
+Un numéro absent ou incorrect peut être corrigé directement sur la fiche SAV et enregistré sur le client.
+
+Le [lien officiel WhatsApp](https://faq.whatsapp.com/5913398998672934) ouvre une conversation avec un texte prérempli.
+L’opérateur clique sur **Envoyer dans WhatsApp**, revient sur le SAV puis clique **J’ai envoyé le message**.
+Seule cette confirmation passe le dossier à **Client prévenu** et écrit un événement horodaté attribué à l’opérateur.
+Ouvrir le lien ne change aucun statut ; aucune preuve de livraison n’est déduite de cette ouverture.
+La confirmation est atomique et un double clic ne crée pas deux événements. Aucun compte API SMS/WhatsApp n’est nécessaire.
 
 ## Vérification
 
 - `npm run lint` et `npm run build` : contrôles statiques et compilation de production.
-- `npm test` : PostgreSQL isolé (PGlite), ventes et paiements, stock, permissions, journal fiscal et changements d’heure de Paris. Aucun accès à la base distante.
+- `npm test` : PostgreSQL isolé (PGlite), ventes et paiements, prestations à prix libre, statistiques, confirmation WhatsApp, stock historique, permissions, journal fiscal et changements d’heure de Paris. Aucun accès à la base distante.
 - `npm run test:browser` : parcours de lecture sur ordinateur/mobile, avec le serveur de production sur `http://127.0.0.1:3100`. Charge `.env.local`, ouvre une session administrateur temporaire sans email et la ferme après les tests. Ne crée ni client ni vente. `MAINTENANCE_OPERATOR_ID` est nécessaire si plusieurs administrateurs existent. `TEST_CHROME_PATH` permet de choisir l’exécutable Chromium. Les sauvegardes et sessions sont exclues de Git.
 
 ## Retrait des données de démonstration

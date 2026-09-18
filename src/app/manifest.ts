@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Heure et Passion — Caisse & SAV',
     short_name: 'H&P Caisse',
-    description: 'Caisse, stock et SAV de la boutique',
+    description: 'Prestations, caisse et SAV de la boutique',
     start_url: '/dashboard',
     display: 'standalone',
     orientation: 'any',

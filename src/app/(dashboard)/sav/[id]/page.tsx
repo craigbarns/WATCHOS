@@ -8,6 +8,8 @@ import { SavDetailsForm } from '@/components/sav/sav-details-form'
 import { SavDepositSlipButton, type DepositSlipData } from '@/components/sav/sav-deposit-slip'
 import { formatDate, formatDateTime, parisDay, SAV_CLOSED_STATUSES, SAV_STATUS } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { SavWhatsApp } from '@/components/sav/sav-whatsapp'
+import { savReadyMessage } from '@/lib/whatsapp'
 
 type SavCaseDetail = Omit<DepositSlipData, 'store'> & {
   id: string
@@ -94,6 +96,14 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
 
       <div className="grid gap-4 lg:grid-cols-[1fr_22rem]">
         <div className="space-y-4">
+          {['PRET', 'CLIENT_PREVENU'].includes(c.status) && (
+            <Card>
+              <CardHeader><CardTitle>Prévenir le client</CardTitle><CardDescription>Votre montre est prête : préparez le message de retrait.</CardDescription></CardHeader>
+              <CardContent>
+                <SavWhatsApp key={`${c.id}-${c.status}`} id={c.id} status={c.status} phone={c.customer?.phone ?? null} message={savReadyMessage({ firstName: c.customer?.first_name ?? null, caseNumber: c.case_number, brand: c.brand, model: c.model, storeName: store?.store_name ?? 'Heure et Passion', address: store?.address, storePhone: store?.phone })} />
+              </CardContent>
+            </Card>
+          )}
           {!closed && (
             <Card>
               <CardHeader>

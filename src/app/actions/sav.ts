@@ -5,6 +5,7 @@ import { requireStaff } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { SAV_STATUS } from '@/lib/format'
+import { whatsappPhone } from '@/lib/whatsapp'
 
 type Result<T = object> = ({ success: true } & T) | { success: false; error: string }
 
@@ -124,6 +125,37 @@ const detailsSchema = z.object({
   estimated_date: optionalDate,
   internal_notes: optional,
 })
+
+export async function confirmSavWhatsApp(id: string): Promise<Result> {
+  const guard = await requireStaff()
+  if (!guard.ok) return { success: false, error: guard.error }
+  if (!z.guid().safeParse(id).success) return { success: false, error: 'Dossier invalide.' }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('confirm_sav_whatsapp', { p_id: id })
+  if (error) return { success: false, error: error.message }
+  revalidatePath(`/sav/${id}`)
+  revalidatePath('/sav')
+  revalidatePath('/dashboard')
+  return { success: true }
+}
+
+export async function updateSavCustomerPhone(id: string, phone: string): Promise<Result> {
+  const guard = await requireStaff()
+  if (!guard.ok) return { success: false, error: guard.error }
+  const parsed = z.object({ id: z.guid(), phone: z.string().max(50) }).safeParse({ id, phone })
+  if (!parsed.success) return { success: false, error: 'Coordonnées invalides.' }
+  const number = whatsappPhone(parsed.data.phone)
+  if (!number) return { success: false, error: 'Saisissez un numéro français ou international valide (ex. +33 6 12 34 56 78).' }
+  const supabase = await createClient()
+  const { data: sav, error: loadError } = await supabase.from('sav_cases').select('customer_id').eq('id', id).single()
+  if (loadError || !sav) return { success: false, error: 'Dossier introuvable.' }
+  const { data: updated, error } = await supabase.from('customers').update({ phone: `+${number}`, updated_at: new Date().toISOString() }).eq('id', sav.customer_id).select('id').single()
+  if (error || !updated) return { success: false, error: 'Le numéro n’a pas pu être enregistré.' }
+  revalidatePath(`/sav/${id}`)
+  revalidatePath('/clients')
+  revalidatePath('/sav')
+  return { success: true }
+}
 
 export async function updateSavDetails(input: z.input<typeof detailsSchema>): Promise<Result> {
   const guard = await requireStaff()

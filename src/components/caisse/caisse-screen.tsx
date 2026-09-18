@@ -1,13 +1,12 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useRef, useState, useSyncExternalStore, useTransition } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
   Search, UserPlus, ShoppingCart, Trash2, CreditCard, Banknote, Landmark, FileSignature, CircleDollarSign,
-  Minus, Plus, X, Percent, User, Loader2, Watch,
+  Minus, Plus, X, Percent, User, Loader2, Wrench, Pencil,
 } from 'lucide-react'
 import {
   finalizeSale, searchCatalog, searchCustomers,
@@ -17,6 +16,7 @@ import { CustomerFormDialog } from '@/components/shared/customer-form-dialog'
 import { ReceiptDialog } from '@/components/caisse/receipt-dialog'
 import { formatEuro, PAYMENT_LABELS, toHT } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
 export type CartLine = CatalogItem & { quantity: number; discount: number }
 
@@ -76,6 +76,11 @@ export function CaisseScreen({
   const searchRef = useRef<HTMLInputElement>(null)
   const isDesktop = useIsDesktop()
 
+  const [selectedService, setSelectedService] = useState<CatalogItem | null>(null)
+  const [serviceAmount, setServiceAmount] = useState('')
+  const [editingKey, setEditingKey] = useState<string | null>(null)
+  const validServiceAmount = /^\d+(?:[.,]\d{1,2})?$/.test(serviceAmount.trim()) && parseAmount(serviceAmount) > 0 && parseAmount(serviceAmount) <= 999999.99
+
   // --- Vente
   const [cart, setCart] = useState<CartLine[]>(initialCart)
   const [customer, setCustomer] = useState<CustomerSummary | null>(null)
@@ -104,21 +109,6 @@ export function CaisseScreen({
   const totalPaid = cents(payments.reduce((s, p) => s + p.amount, 0))
   const remaining = cents(totalTTC - totalPaid)
 
-  // Ouverture depuis une fiche produit : /caisse?serie=XXXX ajoute directement la montre
-  const preloaded = useRef(false)
-  useEffect(() => {
-    if (preloaded.current) return
-    preloaded.current = true
-    const serial = new URLSearchParams(window.location.search).get('serie')
-    if (!serial) return
-    window.history.replaceState(null, '', '/caisse')
-    search(serial).then((items) => {
-      const match = items.find((i) => i.serial_number?.toLowerCase() === serial.toLowerCase())
-      if (match) setCart((c) => (c.some((l) => l.key === match.key) ? c : [...c, { ...match, quantity: 1, discount: 0 }]))
-      else setError(`La montre ${serial} n'est pas disponible à la vente.`)
-    }).catch(() => setError('Impossible de charger cette montre. Réessayez.'))
-  }, [search])
-
   // Toute modification du panier invalide la clé d'idempotence de la tentative précédente
   useEffect(() => {
     idempotencyKey.current = crypto.randomUUID()
@@ -145,23 +135,22 @@ export function CaisseScreen({
     }
   }, [debouncedCustomerQuery])
 
-  const inCart = (item: CatalogItem) => cart.find((l) => l.key === item.key)
-
   const addToCart = (item: CatalogItem) => {
-    setError(null)
-    const existing = inCart(item)
-    if (existing) {
-      if (item.serialized_item_id || existing.quantity >= item.stock) {
-        setError(item.serialized_item_id ? 'Cette montre est déjà dans le panier.' : `Stock maximum atteint (${item.stock}).`)
-        return
-      }
-      setCart((c) => c.map((l) => (l.key === item.key ? { ...l, quantity: l.quantity + 1 } : l)))
-    } else {
-      setCart((c) => [...c, { ...item, quantity: 1, discount: 0 }])
-    }
+    setSelectedService(item)
+    setEditingKey(null)
+    setServiceAmount('')
+  }
+
+  const confirmService = () => {
+    if (!selectedService || !validServiceAmount || processing || lastSaleId) return
+    const price = parseAmount(serviceAmount)
+    if (editingKey) updateLine(editingKey, { price_ttc: price })
+    else setCart((c) => [...c, { ...selectedService, key: crypto.randomUUID(), price_ttc: price, quantity: 1, discount: 0 }])
     setPayments([])
     setCashReceived(null)
     setAmountInput('')
+    setError(null)
+    setSelectedService(null)
     setQuery('')
     if (isDesktop) searchRef.current?.focus()
   }
@@ -171,7 +160,7 @@ export function CaisseScreen({
       c.map((l) => {
         if (l.key !== key) return l
         const next = { ...l, ...patch }
-        next.quantity = Math.max(1, Math.min(next.quantity, next.stock))
+        next.quantity = Math.max(1, Math.min(next.quantity, 999))
         next.discount = cents(Math.max(0, Math.min(next.discount, next.price_ttc * next.quantity)))
         return next
       })
@@ -223,8 +212,8 @@ export function CaisseScreen({
         const result = await finalizeSale(
           customer?.id ?? null,
           cart.map((l) => ({
-            product_id: l.product_id,
-            serialized_item_id: l.serialized_item_id,
+            service_id: l.service_id,
+            unit_price_ttc: l.price_ttc,
             quantity: l.quantity,
             discount_amount: l.discount,
           })),
@@ -251,7 +240,7 @@ export function CaisseScreen({
         e.preventDefault()
         searchRef.current?.focus()
       }
-      if (e.key === 'F9') {
+      if (e.key === 'F9' && !selectedService) {
         e.preventDefault()
         checkout()
       }
@@ -264,32 +253,43 @@ export function CaisseScreen({
 
   return (
     <>
+    <Dialog open={!!selectedService} onOpenChange={(open) => { if (!open) setSelectedService(null) }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{selectedService?.model}</DialogTitle>
+          <DialogDescription>Saisissez le montant unitaire TTC de cette prestation.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={(e) => { e.preventDefault(); confirmService() }} className="grid gap-4">
+          <label htmlFor="service-price" className="text-sm font-medium">Montant TTC (€)</label>
+          <Input id="service-price" autoFocus inputMode="decimal" placeholder="0,00" value={serviceAmount} onChange={(e) => setServiceAmount(e.target.value)} className="h-14 text-right text-2xl tabular-nums" />
+          {serviceAmount && !validServiceAmount && <p role="alert" className="text-sm text-destructive">Saisissez un montant de 0,01 à 999 999,99 €, avec deux décimales maximum.</p>}
+          <Button type="submit" disabled={!validServiceAmount || processing}>{editingKey ? 'Modifier le montant' : 'Ajouter au panier'}</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
     <fieldset disabled={processing || !!lastSaleId} aria-label="Nouvelle vente" className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_22rem]">
       {/* Colonne gauche : catalogue et panier */}
       <div className="flex min-w-0 flex-col gap-3 sm:gap-4 lg:min-h-0">
         <Card className="gap-0 py-0">
           <CardHeader className="border-b py-3">
+            <CardTitle className="mb-2">Prestations</CardTitle>
             <div className="relative">
               <Search className="absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
               <Input
-                aria-label="Rechercher ou scanner un article"
+                aria-label="Rechercher une prestation"
                 ref={searchRef}
                 autoFocus={isDesktop}
                 type="search"
-                placeholder={isDesktop ? 'Marque, modèle, référence, n° de série ou scan code-barres…  (F2)' : 'Rechercher ou scanner un article'}
+                placeholder={isDesktop ? 'Rechercher un poste de prestation…  (F2)' : 'Rechercher une prestation'}
                 className="h-11 pl-9 text-base lg:h-10"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 onKeyDown={async (e) => {
                   if (e.key !== 'Enter' || !query.trim()) return
                   e.preventDefault()
-                  // Douchette : correspondance exacte n° de série / EAN → ajout direct
                   try {
                     const fresh = await search(query)
-                    const exactMatches = fresh.filter((i) => [i.serial_number, i.sku, i.ean, i.reference].some((code) => code?.toLowerCase() === query.trim().toLowerCase()))
-                    const exact = exactMatches.length === 1 ? exactMatches[0] : undefined
-                    if (exact) addToCart(exact)
-                    else if (fresh.length === 1) addToCart(fresh[0])
+                    if (fresh.length === 1) addToCart(fresh[0])
                     else setResults({ query: debouncedQuery, items: fresh })
                   } catch { setCatalogError(true) }
                 }}
@@ -297,15 +297,15 @@ export function CaisseScreen({
               {searching && <Loader2 className="absolute top-3 right-3 h-4 w-4 animate-spin text-muted-foreground" />}
             </div>
           </CardHeader>
-          <CardContent className={cn('max-h-72 overflow-x-hidden overflow-y-auto p-2 lg:max-h-56', !query && cart.length > 0 && 'max-lg:hidden')}>
-            {catalogError ? <div role="alert" className="p-5 text-center text-sm"><p>Le catalogue n’a pas pu être chargé.</p><Button variant="outline" className="mt-3" onClick={() => setReloadCatalog((n) => n + 1)}>Réessayer</Button></div> : results.items.length === 0 && !searching ? (
+          <CardContent className="max-h-96 overflow-x-hidden overflow-y-auto p-2">
+            {catalogError ? <div role="alert" className="p-5 text-center text-sm"><p>Les prestations n’ont pas pu être chargées.</p><Button variant="outline" className="mt-3" onClick={() => setReloadCatalog((n) => n + 1)}>Réessayer</Button></div> : results.items.length === 0 && !searching ? (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                {query ? 'Aucun article disponible ne correspond.' : <>Votre collection est prête à accueillir ses premières pièces.<br /><Link href="/stock?ajouter=1" className="mt-3 inline-block font-medium text-primary underline underline-offset-4">Ajouter un article au stock</Link></>}
+                {query ? 'Aucune prestation ne correspond.' : 'Aucun poste de prestation disponible.'}
               </p>
             ) : (
               <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
                 {results.items.map((item) => {
-                  const added = inCart(item)
+                  const added = cart.some((line) => line.service_id === item.service_id)
                   return (
                     <button
                       key={item.key}
@@ -317,22 +317,17 @@ export function CaisseScreen({
                       )}
                     >
                       <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-                        <Watch className="size-4" />
+                        <Wrench className="size-4" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-medium">
-                          {item.brand} {item.model}
+                        <div className="text-sm font-medium">
+                          {item.model}
                         </div>
                         <div className="truncate text-xs text-muted-foreground">
-                          {item.serial_number ? `S/N ${item.serial_number}` : `${item.stock} en stock`}
-                          {item.reference && ` · ${item.reference}`}
-                          {item.details && ` · ${item.details}`}
+                          Montant libre · TVA {item.vat_rate} %
                         </div>
                       </div>
-                      <div className="shrink-0 text-right tabular-nums">
-                        <div className="text-sm font-semibold whitespace-nowrap">{formatEuro(item.price_ttc)} <span className="text-[10px] font-normal text-muted-foreground">TTC</span></div>
-                        <div className="text-xs text-muted-foreground">{formatEuro(toHT(item.price_ttc, item.vat_rate))} HT</div>
-                      </div>
+                      <Plus className="size-4 shrink-0 text-primary" />
                     </button>
                   )
                 })}
@@ -358,7 +353,7 @@ export function CaisseScreen({
             {cart.length === 0 ? (
               <div className="flex h-full min-h-28 flex-col items-center justify-center gap-2 text-muted-foreground lg:min-h-40">
                 <ShoppingCart className="size-8 opacity-40" />
-                <p className="text-sm">Recherchez ou scannez un article pour commencer</p>
+                <p className="text-sm">Choisissez une prestation et saisissez son montant</p>
               </div>
             ) : (
               <ul className="divide-y">
@@ -366,27 +361,23 @@ export function CaisseScreen({
                   <li key={line.key} className="flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
                     <div className="order-1 min-w-0 flex-1 basis-[calc(100%-3.5rem)] sm:basis-0">
                       <div className="truncate font-medium">
-                        {line.brand} {line.model}
+                        {line.model}
                       </div>
                       <div className="truncate text-xs text-muted-foreground">
-                        {line.serial_number && <span className="font-mono">S/N {line.serial_number} · </span>}
                         {formatEuro(toHT(line.price_ttc, line.vat_rate))} HT · {formatEuro(line.price_ttc)} TTC · TVA {line.vat_rate} %
                       </div>
                     </div>
 
-                    {line.serialized_item_id ? (
-                      <span className="order-3 w-24 text-xs text-muted-foreground sm:order-2 sm:text-center">Pièce unique</span>
-                    ) : (
-                      <div className="order-3 flex items-center gap-1 sm:order-2 sm:w-24 sm:justify-center">
-                        <Button variant="outline" size="icon-sm" className="size-9 sm:size-7" onClick={() => updateLine(line.key, { quantity: line.quantity - 1 })} aria-label="Diminuer">
-                          <Minus />
-                        </Button>
-                        <span className="w-6 text-center tabular-nums">{line.quantity}</span>
-                        <Button variant="outline" size="icon-sm" className="size-9 sm:size-7" onClick={() => updateLine(line.key, { quantity: line.quantity + 1 })} aria-label="Augmenter">
-                          <Plus />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="order-3 flex items-center gap-1 sm:order-2 sm:w-24 sm:justify-center">
+                      <Button variant="outline" size="icon-sm" className="size-9 sm:size-7" onClick={() => updateLine(line.key, { quantity: line.quantity - 1 })} aria-label="Diminuer">
+                        <Minus />
+                      </Button>
+                      <span className="w-6 text-center tabular-nums">{line.quantity}</span>
+                      <Button variant="outline" size="icon-sm" className="size-9 sm:size-7" onClick={() => updateLine(line.key, { quantity: line.quantity + 1 })} aria-label="Augmenter">
+                        <Plus />
+                      </Button>
+                    </div>
+                    <Button variant="ghost" size="icon-sm" aria-label={`Modifier le montant de ${line.model}`} className="order-3" onClick={() => { setSelectedService(line); setEditingKey(line.key); setServiceAmount(String(line.price_ttc)) }}><Pencil /></Button>
 
                     <Button
                       variant="ghost"
@@ -616,7 +607,7 @@ export function CaisseScreen({
             <div className="flex items-center gap-3">
               <div className="min-w-0 flex-1">
                 <div className="text-xs text-muted-foreground">
-                  {cart.reduce((n, l) => n + l.quantity, 0)} article(s) · {formatEuro(totalHT)} HT
+                  {cart.reduce((n, l) => n + l.quantity, 0)} prestation(s) · {formatEuro(totalHT)} HT
                 </div>
                 <div className="text-xl font-bold tabular-nums">{formatEuro(totalTTC)}</div>
               </div>

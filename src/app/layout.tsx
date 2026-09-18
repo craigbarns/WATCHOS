@@ -19,7 +19,7 @@ const playfair = Playfair_Display({
 
 export const metadata: Metadata = {
   title: "Heure et Passion - Caisse & SAV",
-  description: "Votre boutique horlogère, en toute précision. Caisse, stock, clients et service après-vente.",
+  description: "Votre boutique horlogère, en toute précision. Prestations, caisse, clients et service après-vente.",
   appleWebApp: {
     capable: true,
     title: "H&P Caisse",

@@ -11,7 +11,7 @@ import { ROLE_LABELS } from '@/lib/format'
 import { cn } from '@/lib/utils'
 import { isActive, navFor } from '@/components/layout/nav-items'
 
-const PRIMARY = ['/dashboard', '/caisse', '/stock', '/sav']
+const PRIMARY = ['/dashboard', '/caisse', '/statistiques', '/sav']
 
 /** Barre d'onglets en bas d'écran sur téléphone, avec un menu « Plus » pour le reste. */
 export function MobileNav({ profile }: { profile: Profile }) {

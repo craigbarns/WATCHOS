@@ -5,15 +5,13 @@ test('Dashboard is readable, responsive and provides working shortcuts', async (
   page.on('pageerror', (error) => errors.push(error.message))
   await page.goto('/dashboard')
   await expect(page.getByRole('heading', { name: /Bonjour|Bonsoir/ })).toBeVisible()
-  await expect(page.getByText('Votre collection commence ici')).toBeVisible()
+  await expect(page.getByText('SAV à récupérer', { exact: true })).toBeVisible()
   await expect(page.getByRole('link', { name: 'Ouvrir la caisse' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
   await page.screenshot({ path: `test-results/dashboard-${info.project.name}.png`, fullPage: true })
-  await page.getByRole('link', { name: 'Ajouter un article', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: 'Nouvel article' })).toBeVisible()
-  await expect(page.getByLabel('N° de série *', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Accessoire / pièce', exact: true }).click()
-  await expect(page.getByLabel('Quantité en stock')).toBeVisible()
+  await page.getByRole('link', { name: 'Ventes par poste Prestations & chiffre d’affaires' }).click()
+  await expect(page.getByRole('heading', { name: 'Ventes par poste' })).toBeVisible()
+  await expect(page.getByRole('cell', { name: 'Pile', exact: true })).toBeVisible()
   expect(errors).toEqual([])
 })
 
@@ -28,20 +26,29 @@ test('Stock starts empty and handles filters and search', async ({ page }) => {
   await expect(page.getByText('Place à votre collection')).toBeVisible()
 })
 
-test('Checkout excludes demonstration stock and blocks an empty payment', async ({ page }) => {
+test('Service checkout supports manual prices and clears payments after editing', async ({ page }) => {
   await page.goto('/caisse')
-  await expect(page.getByText('Votre collection est prête à accueillir ses premières pièces.')).toBeVisible()
   await expect(page.getByRole('button', { name: /ENCAISSER/ })).toBeDisabled()
-  await expect(page.getByRole('button', { name: 'Carte bancaire', exact: true })).toBeDisabled()
-  await page.getByRole('searchbox', { name: 'Rechercher ou scanner un article' }).fill('DEMO')
-  await expect(page.getByText('Aucun article disponible ne correspond.')).toBeVisible()
+  await page.getByRole('button', { name: 'Pile Montant libre · TVA 20 %', exact: true }).click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByRole('button', { name: 'Ajouter au panier' })).toBeDisabled()
+  await dialog.getByLabel('Montant TTC (€)').fill('15,50')
+  await dialog.getByRole('button', { name: 'Ajouter au panier' }).click()
+  await page.getByRole('button', { name: 'Carte bancaire', exact: true }).click()
+  await expect(page.getByRole('button', { name: /ENCAISSER/ })).toBeEnabled()
+  await page.getByRole('button', { name: 'Modifier le montant de Pile', exact: true }).click()
+  await dialog.getByLabel('Montant TTC (€)').fill('18')
+  await dialog.getByRole('button', { name: 'Modifier le montant', exact: true }).click()
+  await expect(page.getByRole('button', { name: /ENCAISSER/ })).toBeDisabled()
+  await page.getByRole('searchbox', { name: 'Rechercher une prestation' }).fill('DEMO')
+  await expect(page.getByText('Aucune prestation ne correspond.')).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true)
 })
 
 test('Clients, workshop, reports and settings load without runtime errors', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', (error) => errors.push(error.message))
-  for (const [url, heading] of [['/clients', 'Clients'], ['/sav', 'Service après-vente'], ['/rapports', 'Rapports'], ['/parametres', 'Paramètres']]) {
+  for (const [url, heading] of [['/clients', 'Clients'], ['/sav', 'Service après-vente'], ['/rapports', 'Rapports'], ['/statistiques', 'Ventes par poste'], ['/parametres', 'Paramètres']]) {
     await page.goto(url)
     await expect(page.getByRole('heading', { level: 1, name: new RegExp(heading) })).toBeVisible()
     await expect(page.getByText('Une interruption momentanée')).toHaveCount(0)

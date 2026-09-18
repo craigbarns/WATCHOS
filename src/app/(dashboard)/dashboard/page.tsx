@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Euro, ShoppingBag, Wrench, Package, ArrowRight, ShieldCheck, Watch, Users, Plus, Check, ArrowUpRight } from 'lucide-react'
+import { Euro, ShoppingBag, Wrench, ChartColumn, ArrowRight, ShieldCheck, Users, Check, ArrowUpRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { formatDateTime, formatEuro, parisDay, parisDayStartISO, SAV_CLOSED_STATUSES, SAV_STATUS } from '@/lib/format'
@@ -34,12 +34,11 @@ export default async function DashboardPage() {
   const todayStart = parisDayStartISO(today)
   const monthStart = parisDayStartISO(`${today.slice(0, 8)}01`)
 
-  const [todaySales, monthSales, openSav, serializedStock, accessoryStock, recentSales, recentSav] = await Promise.all([
+  const [todaySales, monthSales, openSav, readySav, recentSales, recentSav] = await Promise.all([
     supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', todayStart),
     supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', monthStart),
     supabase.from('sav_cases').select('id', { count: 'exact', head: true }).not('status', 'in', `(${SAV_CLOSED_STATUSES.join(',')})`),
-    supabase.from('serialized_items').select('product:products!inner(selling_price_ttc, purchase_price_ttc)').eq('status', 'AVAILABLE').neq('products.status', 'ARCHIVED'),
-    supabase.from('products').select('stock_quantity, selling_price_ttc, purchase_price_ttc').eq('type', 'NON_SERIALIZED').neq('status', 'ARCHIVED').gt('stock_quantity', 0),
+    supabase.from('sav_cases').select('id', { count: 'exact', head: true }).in('status', ['PRET', 'CLIENT_PREVENU']),
     supabase
       .from('sales')
       .select('id, receipt_number, total_ttc, finalized_at, customer:customers(first_name, last_name)')
@@ -53,7 +52,7 @@ export default async function DashboardPage() {
       .limit(6),
   ])
 
-  if ([todaySales, monthSales, openSav, serializedStock, accessoryStock, recentSales, recentSav].some((result) => result.error)) {
+  if ([todaySales, monthSales, openSav, readySav, recentSales, recentSav].some((result) => result.error)) {
     throw new Error('Le tableau de bord ne peut pas être chargé.')
   }
 
@@ -63,13 +62,6 @@ export default async function DashboardPage() {
   const salesCount = todaySales.data?.length ?? 0
   const basket = salesCount ? caToday / salesCount : 0
 
-  type StockProduct = { selling_price_ttc: number; purchase_price_ttc: number | null }
-  const watches = (serializedStock.data ?? []) as unknown as Array<{ product: StockProduct }>
-  const stockValue =
-    watches.reduce((s, w) => s + Number(w.product.selling_price_ttc), 0) +
-    (accessoryStock.data ?? []).reduce((s, p) => s + p.stock_quantity * Number(p.selling_price_ttc), 0)
-
-  const stockUnits = watches.length + (accessoryStock.data ?? []).reduce((n, p) => n + p.stock_quantity, 0)
   const kpis = [
     {
       title: "CA aujourd'hui (TTC)",
@@ -80,10 +72,10 @@ export default async function DashboardPage() {
     { title: "Ventes aujourd'hui", value: String(salesCount), hint: salesCount ? `Panier moyen : ${formatEuro(basket)}` : 'Aucune vente', icon: ShoppingBag },
     { title: 'SAV en cours', value: String(openSav.count ?? 0), hint: 'Dossiers non restitués', icon: Wrench },
     {
-      title: 'Valeur du stock',
-      value: `${formatEuro(stockValue)} TTC`,
-      hint: `${watches.length} montre(s) · ${stockUnits - watches.length} accessoire(s)`,
-      icon: Package,
+      title: 'SAV à récupérer',
+      value: String(readySav.count ?? 0),
+      hint: 'Interventions terminées',
+      icon: Check,
     },
   ]
 
@@ -122,15 +114,8 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      {stockUnits === 0 && canSell && (
-        <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-primary/15 bg-[#eef2e8] p-5">
-          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-white text-primary"><Watch className="size-5" /></span>
-          <div className="min-w-0 flex-1"><h2 className="font-medium">Votre collection commence ici</h2><p className="mt-1 text-sm text-muted-foreground">Ajoutez votre première pièce pour préparer votre prochaine vente.</p></div>
-          <Link href="/stock?ajouter=1" className="inline-flex items-center gap-2 text-sm font-semibold text-primary"><Plus className="size-4" /> Ajouter un article</Link>
-        </div>
-      )}
       <div className="grid gap-3 sm:grid-cols-3">
-        {[{ href: '/stock', icon: Watch, title: 'La collection', text: 'Pièces & inventaire' }, { href: '/clients', icon: Users, title: 'Vos clients', text: 'Relations & coordonnées' }, { href: '/sav', icon: Wrench, title: 'L’atelier', text: 'Suivi & réparations' }].map((item) => (
+        {[...(canSell ? [{ href: '/statistiques', icon: ChartColumn, title: 'Ventes par poste', text: 'Prestations & chiffre d’affaires' }] : []), { href: '/clients', icon: Users, title: 'Vos clients', text: 'Relations & coordonnées' }, { href: '/sav', icon: Wrench, title: 'L’atelier', text: 'Suivi & réparations' }].map((item) => (
           <Link key={item.href} href={item.href} className="group flex items-center gap-4 rounded-xl border bg-card px-5 py-4 transition-colors hover:border-primary/30 hover:bg-primary/5">
             <item.icon className="size-5 text-primary" strokeWidth={1.5} /><span className="flex-1"><span className="block text-sm font-semibold">{item.title}</span><span className="text-xs text-muted-foreground">{item.text}</span></span><ArrowRight className="size-4 text-muted-foreground transition-transform group-hover:translate-x-1" />
           </Link>

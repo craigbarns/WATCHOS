@@ -152,7 +152,7 @@ function AddMemberForm({ onClose }: { onClose: () => void }) {
           ))}
         </select>
         <span className="text-xs text-muted-foreground">
-          Vendeur : caisse, stock, clients, SAV, rapports · Technicien : SAV et consultation · Administrateur : tout.
+          Vendeur : caisse, statistiques, clients, SAV, rapports · Technicien : SAV et consultation · Administrateur : tout.
         </span>
       </div>
       <div className="grid gap-1.5">

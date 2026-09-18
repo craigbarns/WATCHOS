@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation'
+import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Download, ShieldAlert, ShieldCheck } from 'lucide-react'
@@ -31,7 +32,8 @@ export default async function RapportsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Rapports &amp; clôtures</h1>
-          <p className="text-sm text-muted-foreground">Conformité anti-fraude TVA : inaltérabilité, sécurisation, conservation, archivage.</p>
+          <p className="text-sm text-muted-foreground">Journal des encaissements, clôtures et archives.</p>
+          <Link href="/statistiques" className="mt-2 inline-block text-sm font-medium text-primary underline underline-offset-4">Voir les ventes par poste →</Link>
         </div>
         <a
           href="/rapports/archive"

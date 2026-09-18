@@ -27,8 +27,8 @@ export function Sidebar({ role }: { role: Role }) {
       </nav>
       <div className="mx-5 mb-6 hidden rounded-2xl border border-white/10 p-4 lg:block">
         <p className="font-playfair text-base text-[#e3d6ad]">Le sens du détail.</p>
-        <p className="mt-2 text-xs leading-relaxed text-white/50">Chaque pièce, chaque client,<br />chaque instant compte.</p>
-        <Link href="/stock" className="mt-4 inline-flex items-center gap-2 text-xs text-white/80 hover:text-white">Voir la collection <ArrowUpRight className="size-3.5" /></Link>
+        <p className="mt-2 text-xs leading-relaxed text-white/50">Chaque geste, chaque client,<br />chaque instant compte.</p>
+        <Link href="/sav" className="mt-4 inline-flex items-center gap-2 text-xs text-white/80 hover:text-white">Voir les dossiers SAV <ArrowUpRight className="size-3.5" /></Link>
       </div>
     </aside>
   )
