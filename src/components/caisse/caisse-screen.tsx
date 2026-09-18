@@ -269,9 +269,9 @@ export function CaisseScreen({
     </Dialog>
     <fieldset disabled={processing || !!lastSaleId} aria-label="Nouvelle vente" className="grid min-w-0 grid-cols-1 gap-3 sm:gap-4 lg:h-full lg:grid-cols-[minmax(0,1fr)_22rem]">
       {/* Colonne gauche : catalogue et panier */}
-      <div className="flex min-w-0 flex-col gap-3 sm:gap-4 lg:min-h-0">
-        <Card className="gap-0 py-0">
-          <CardHeader className="border-b py-3">
+      <div className="flex min-w-0 flex-col gap-3 sm:gap-4 lg:min-h-0 lg:overflow-y-auto">
+        <Card className="gap-0 py-0 lg:min-h-48">
+          <CardHeader className="shrink-0 border-b py-3">
             <CardTitle className="mb-2">Prestations</CardTitle>
             <div className="relative">
               <Search className="absolute top-2.5 left-3 h-4 w-4 text-muted-foreground" />
@@ -337,7 +337,7 @@ export function CaisseScreen({
         </Card>
 
         <Card className="flex flex-col gap-0 overflow-hidden py-0 lg:min-h-64 lg:flex-1">
-          <CardHeader className="flex flex-row items-center justify-between border-b py-3">
+          <CardHeader className="flex shrink-0 flex-row items-center justify-between border-b py-3">
             <CardTitle className="flex items-center gap-2 text-lg">
               <ShoppingCart className="h-5 w-5" />
               Panier
@@ -417,7 +417,7 @@ export function CaisseScreen({
               </ul>
             )}
           </CardContent>
-          <CardFooter className="flex-col items-stretch gap-1 border-t bg-muted/40 p-4">
+          <CardFooter className="shrink-0 flex-col items-stretch gap-1 border-t bg-muted/40 p-4">
             {totalDiscount > 0 && (
               <>
                 <div className="flex justify-between text-sm text-muted-foreground">
@@ -448,7 +448,7 @@ export function CaisseScreen({
 
       {/* Colonne droite : client et paiement */}
       <div className="flex min-w-0 flex-col gap-3 sm:gap-4 lg:min-h-0">
-        <Card className="gap-0 py-0">
+        <Card className="shrink-0 gap-0 py-0">
           <CardHeader className="flex flex-row items-center justify-between border-b py-3">
             <CardTitle className="text-lg">Client</CardTitle>
             <Button variant="ghost" size="icon-sm" onClick={() => setCustomerDialogOpen(true)} title="Nouveau client">
@@ -511,11 +511,11 @@ export function CaisseScreen({
           </CardContent>
         </Card>
 
-        <Card id="paiement" className="flex scroll-mt-4 flex-col gap-0 py-0 lg:flex-1">
-          <CardHeader className="border-b py-3">
+        <Card id="paiement" className="flex scroll-mt-4 flex-col gap-0 py-0 lg:min-h-0 lg:flex-1">
+          <CardHeader className="shrink-0 border-b py-3">
             <CardTitle className="text-lg">Paiement</CardTitle>
           </CardHeader>
-          <CardContent className="flex flex-col gap-3 py-4 lg:flex-1">
+          <CardContent className="flex flex-col gap-3 py-4 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:overscroll-contain">
             {payments.map((p, i) => (
               <div key={i} className="flex items-center justify-between rounded-lg bg-muted px-3 py-2 text-sm">
                 <span>{PAYMENT_LABELS[p.method]}</span>
@@ -584,7 +584,7 @@ export function CaisseScreen({
               </div>
             </div>
           </CardContent>
-          <CardFooter className="flex-col gap-2 border-t p-4">
+          <CardFooter className="shrink-0 flex-col gap-2 border-t p-4">
             {error && <div role="alert" className="w-full rounded-md bg-destructive/10 p-2 text-sm text-destructive">{error}</div>}
             <Button
               className="h-14 w-full text-lg font-bold tracking-wide"
