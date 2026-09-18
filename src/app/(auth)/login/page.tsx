@@ -47,7 +47,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-cover bg-center opacity-80" style={{ backgroundImage: heroImage }} />
         <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/10 lg:from-black/80 lg:via-transparent lg:to-transparent" />
         <div className="absolute inset-x-6 bottom-10 text-white lg:inset-x-12 lg:bottom-12">
-          <p className="mb-2 text-xs tracking-[0.35em] text-[#c8a96a] uppercase lg:hidden">Heure et Passion</p>
+          <p className="mb-2 text-xs tracking-[0.35em] text-[#c8a96a] uppercase lg:hidden">Heures et Passion</p>
           <h2 className="font-playfair text-3xl font-bold tracking-tight lg:mb-4 lg:text-4xl">L&apos;art de la précision.</h2>
           <p className="hidden text-lg font-light text-gray-300 lg:block">
             Gérez votre boutique avec un outil à la hauteur de vos garde-temps.
@@ -61,7 +61,7 @@ export default function LoginPage() {
           <CardHeader className="space-y-1 max-lg:px-0">
             <CardTitle className="text-center font-playfair text-2xl font-bold lg:text-3xl">
               <span className="lg:hidden">Connexion</span>
-              <span className="hidden lg:inline">Heure et Passion</span>
+              <span className="hidden lg:inline">Heures et Passion</span>
             </CardTitle>
             <CardDescription className="text-md pt-2 text-center">
               Votre espace, vos pièces, vos clients.

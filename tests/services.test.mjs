@@ -12,7 +12,7 @@ test('WhatsApp normalizes contact numbers and encodes the exact message', () => 
   for (const phone of ['06 12 34 56 78', '+33 6 12 34 56 78', '0033612345678', '+33 (0)6.12.34.56.78', '33612345678']) assert.equal(whatsappPhone(phone), '33612345678')
   assert.equal(whatsappPhone('+44 7700 900123'), '447700900123')
   for (const phone of [null, '', '123', '06 12 34', '+33 1234', '06/07', '06 12 34 56 78 poste 3', '++33612345678', '+33061234', '0000000000', '1234567890123456']) assert.equal(whatsappPhone(phone), null, phone)
-  const message = savReadyMessage({ firstName: 'Élodie', caseNumber: 'SAV-2026-0012', brand: 'Omega', model: 'De Ville', storeName: 'Heure & Passion', address: '1 rue de Paris', storePhone: '01 23 45 67 89' })
+  const message = savReadyMessage({ firstName: 'Élodie', caseNumber: 'SAV-2026-0012', brand: 'Omega', model: 'De Ville', storeName: 'Heures et Passion', address: '1 rue de Paris', storePhone: '01 23 45 67 89' })
   const url = new URL(whatsappLink('06 12 34 56 78', message))
   assert.equal(url.origin, 'https://wa.me')
   assert.equal(url.pathname, '/33612345678')
@@ -20,7 +20,7 @@ test('WhatsApp normalizes contact numbers and encodes the exact message', () => 
   assert.match(message, /Élodie/)
   assert.match(message, /SAV-2026-0012/)
   assert.match(message, /Omega De Ville/)
-  assert.match(message, /Heure & Passion/)
+  assert.match(message, /Heures et Passion/)
   assert.equal(whatsappLink(null, message), null)
 })
 

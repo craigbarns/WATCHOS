@@ -18,8 +18,8 @@ export type StoreSettings = {
 }
 
 const FIELDS: Array<{ key: keyof StoreSettings; label: string; placeholder?: string; wide?: boolean }> = [
-  { key: 'store_name', label: 'Nom de la boutique *', placeholder: 'Heure et Passion' },
-  { key: 'company_name', label: 'Raison sociale', placeholder: 'Heure et Passion SAS' },
+  { key: 'store_name', label: 'Nom de la boutique *', placeholder: 'Heures et Passion' },
+  { key: 'company_name', label: 'Raison sociale', placeholder: 'Heures et Passion SAS' },
   { key: 'address', label: 'Adresse', placeholder: '12 rue de la Paix, 75002 Paris', wide: true },
   { key: 'siret', label: 'SIRET', placeholder: '14 chiffres' },
   { key: 'vat_number', label: 'N° TVA intracommunautaire', placeholder: 'FR…' },

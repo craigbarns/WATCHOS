@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { SAV_STATUS } from '@/lib/format'
 import { whatsappPhone } from '@/lib/whatsapp'
+import { savPaymentSchema, type SavPaymentInput } from '@/lib/sav-payment'
 
 type Result<T = object> = ({ success: true } & T) | { success: false; error: string }
 
@@ -125,6 +126,21 @@ const detailsSchema = z.object({
   estimated_date: optionalDate,
   internal_notes: optional,
 })
+
+export async function updateSavPayment(input: SavPaymentInput): Promise<Result> {
+  const guard = await requireStaff()
+  if (!guard.ok) return { success: false, error: guard.error }
+  const parsed = savPaymentSchema.safeParse(input)
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Règlement invalide.' }
+  const supabase = await createClient()
+  const { error } = await supabase.rpc('update_sav_payment', {
+    p_id: parsed.data.id, p_amount_due: parsed.data.amount_due, p_is_paid: parsed.data.is_paid,
+  })
+  if (error) return { success: false, error: error.code === 'PGRST202' ? 'Le suivi des règlements SAV doit être activé par l’administrateur.' : error.message }
+  revalidatePath(`/sav/${parsed.data.id}`)
+  revalidatePath('/sav')
+  return { success: true }
+}
 
 export async function confirmSavWhatsApp(id: string): Promise<Result> {
   const guard = await requireStaff()

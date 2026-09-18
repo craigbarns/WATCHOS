@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { createClient } from '@/lib/supabase/server'
 import { SavStatusPanel } from '@/components/sav/sav-status-panel'
 import { SavDetailsForm } from '@/components/sav/sav-details-form'
+import { SavPaymentForm } from '@/components/sav/sav-payment-form'
 import { SavDepositSlipButton, type DepositSlipData } from '@/components/sav/sav-deposit-slip'
 import { formatDate, formatDateTime, parisDay, SAV_CLOSED_STATUSES, SAV_STATUS } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -100,7 +101,7 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
             <Card>
               <CardHeader><CardTitle>Prévenir le client</CardTitle><CardDescription>Votre montre est prête : préparez le message de retrait.</CardDescription></CardHeader>
               <CardContent>
-                <SavWhatsApp key={`${c.id}-${c.status}`} id={c.id} status={c.status} phone={c.customer?.phone ?? null} message={savReadyMessage({ firstName: c.customer?.first_name ?? null, caseNumber: c.case_number, brand: c.brand, model: c.model, storeName: store?.store_name ?? 'Heure et Passion', address: store?.address, storePhone: store?.phone })} />
+                <SavWhatsApp key={`${c.id}-${c.status}`} id={c.id} status={c.status} phone={c.customer?.phone ?? null} message={savReadyMessage({ firstName: c.customer?.first_name ?? null, caseNumber: c.case_number, brand: c.brand, model: c.model, storeName: store?.store_name ?? 'Heures et Passion', address: store?.address, storePhone: store?.phone })} />
               </CardContent>
             </Card>
           )}
@@ -162,6 +163,20 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
         </div>
 
         <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Règlement</CardTitle>
+              <CardDescription>Montant convenu et suivi du paiement.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SavPaymentForm
+                key={`${c.id}|${c.amount_due}|${c.is_paid}`}
+                id={c.id}
+                amountDue={c.amount_due == null ? null : Number(c.amount_due)}
+                isPaid={c.is_paid ?? false}
+              />
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle>Client</CardTitle>

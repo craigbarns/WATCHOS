@@ -28,7 +28,7 @@ export function Header({ profile }: { profile: Profile }) {
 
   return (
     <header className="workspace-header flex h-16 shrink-0 md:h-20 items-center justify-between gap-3 border-b bg-card/80 px-4 md:px-8 pt-[env(safe-area-inset-top)] backdrop-blur-lg [box-sizing:content-box]">
-      <span className="font-playfair text-lg font-bold tracking-tight md:hidden">Heure et Passion</span>
+      <span className="font-playfair text-lg font-bold tracking-tight md:hidden">Heures et Passion</span>
       <div className="hidden md:block"><p className="text-sm font-medium">{current?.name ?? 'Votre boutique'}</p><span className="text-xs text-muted-foreground first-letter:uppercase">
         {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Europe/Paris' })}
       </span></div>

@@ -2,7 +2,7 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Heure et Passion — Caisse & SAV',
+    name: 'Heures et Passion — Caisse & SAV',
     short_name: 'H&P Caisse',
     description: 'Prestations, caisse et SAV de la boutique',
     start_url: '/dashboard',

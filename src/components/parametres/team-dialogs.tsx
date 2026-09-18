@@ -52,7 +52,7 @@ function PasswordField({ id, value, onChange }: { id: string; value: string; onC
 
 function CredentialsSummary({ email, password, onDone }: { email: string; password: string; onDone: () => void }) {
   const [copied, setCopied] = useState(false)
-  const text = `Accès caisse Heure et Passion\nAdresse : ${window.location.origin}\nEmail : ${email}\nMot de passe : ${password}`
+  const text = `Accès caisse Heures et Passion\nAdresse : ${window.location.origin}\nEmail : ${email}\nMot de passe : ${password}`
   return (
     <div className="grid gap-4">
       <DialogHeader>

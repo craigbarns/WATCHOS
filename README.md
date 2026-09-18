@@ -1,4 +1,4 @@
-# Heure et Passion — Caisse & SAV
+# Heures et Passion — Caisse & SAV
 
 Logiciel de caisse pour les prestations d’un atelier d’horlogerie, avec suivi SAV et contact WhatsApp,
 conçu pour les exigences anti-fraude TVA : inaltérabilité, sécurisation, conservation, archivage.
@@ -10,7 +10,8 @@ Stack : Next.js 16 (App Router) · React 19 · Supabase (Postgres, Auth, RLS) ·
 1. Variables dans `.env.local` : `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 2. Appliquer **dans l'ordre** les fichiers de `supabase/migrations/` (Supabase CLI `supabase db push`, ou SQL Editor).
 3. La migration `20260920000000_service_checkout.sql` installe les 11 postes de prestation et les statistiques, sans créer de vente ni de client fictif. Elle préserve les ventes historiques.
-4. `npm install && npm run dev`, puis se connecter sur `/login` avec un compte provisionné dans Supabase Auth.
+4. La migration `20260921000000_sav_payment_and_store_name.sql` corrige le nom commercial en « Heures et Passion » et ajoute le suivi du règlement SAV.
+5. `npm install && npm run dev`, puis se connecter sur `/login` avec un compte provisionné dans Supabase Auth.
    Le **premier compte** devient administrateur ; les suivants doivent être activés dans Paramètres → Équipe.
 
 ## Architecture fiscale
@@ -52,6 +53,14 @@ Les postes sont dans `service_categories`, avec une TVA initiale de 20 %, identi
 La période inclut les deux dates, en heure de Paris (changements d’heure compris). L’agrégation se fait en SQL,
 sans plafond de 1 000 lignes. Les ventes historiques de produits restent dans les rapports fiscaux.
 
+## Règlement des SAV
+
+Chaque fiche SAV propose un montant TTC saisi manuellement et une case **Payé**. Une case décochée
+signifie **Non payé**. Le montant peut rester vide tant qu’il n’est pas connu ; zéro indique une intervention gratuite.
+Cliquer sur **Enregistrer le règlement** conserve le montant et le statut, et inscrit la modification dans
+l’historique du dossier avec son auteur. Ces informations figurent aussi sur le bon de dépôt imprimé.
+Ce suivi manuel ne crée pas de vente : les encaissements se font dans la caisse.
+
 ## WhatsApp pour les SAV prêts
 
 Au statut **Prêt**, la fiche propose **Envoyer par WhatsApp** avec le prénom du client, la montre,
@@ -67,7 +76,7 @@ La confirmation est atomique et un double clic ne crée pas deux événements. A
 ## Vérification
 
 - `npm run lint` et `npm run build` : contrôles statiques et compilation de production.
-- `npm test` : PostgreSQL isolé (PGlite), ventes et paiements, prestations à prix libre, statistiques, confirmation WhatsApp, stock historique, permissions, journal fiscal et changements d’heure de Paris. Aucun accès à la base distante.
+- `npm test` : PostgreSQL isolé (PGlite), ventes et paiements, règlements SAV et historique, prestations à prix libre, statistiques, confirmation WhatsApp, stock historique, permissions, journal fiscal et changements d’heure de Paris. Aucun accès à la base distante.
 - `npm run test:browser` : parcours de lecture sur ordinateur/mobile, avec le serveur de production sur `http://127.0.0.1:3100`. Charge `.env.local`, ouvre une session administrateur temporaire sans email et la ferme après les tests. Ne crée ni client ni vente. `MAINTENANCE_OPERATOR_ID` est nécessaire si plusieurs administrateurs existent. `TEST_CHROME_PATH` permet de choisir l’exécutable Chromium. Les sauvegardes et sessions sont exclues de Git.
 
 ## Retrait des données de démonstration

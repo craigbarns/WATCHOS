@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { formatDate, formatDateTime } from '@/lib/format'
+import { formatDate, formatDateTime, formatEuro } from '@/lib/format'
 import { printElement, type PaperFormat } from '@/lib/print'
 import { usePrinterPrefs } from '@/lib/printer-prefs'
 
@@ -20,6 +20,8 @@ export type DepositSlipData = {
   visual_condition: string | null
   accessories_left: string | null
   box_left: boolean
+  amount_due: number | null
+  is_paid: boolean
   customer: { civility: string | null; first_name: string; last_name: string; phone: string | null; email: string | null } | null
   store: { store_name: string; company_name: string | null; address: string | null; phone: string | null; siret: string | null } | null
 }
@@ -82,13 +84,15 @@ function DepositSlip({ data }: { data: DepositSlipData }) {
     ['État au dépôt', data.visual_condition],
     ['Accessoires laissés', [data.accessories_left, data.box_left ? 'Boîte' : null].filter(Boolean).join(' · ') || null],
     ['Restitution estimée', data.estimated_date ? formatDate(data.estimated_date) : 'À confirmer après diagnostic'],
+    ['Montant du SAV (TTC)', data.amount_due == null ? 'À définir' : formatEuro(data.amount_due)],
+    ['Règlement', data.is_paid ? 'Payé' : 'Non payé'],
   ]
 
   return (
     <div className="print-area bg-white p-6 text-[12px] leading-relaxed text-black">
       <div className="flex items-start justify-between border-b border-black pb-3">
         <div>
-          <div className="font-playfair text-xl font-bold">{data.store?.store_name ?? 'Heure et Passion'}</div>
+          <div className="font-playfair text-xl font-bold">{data.store?.store_name ?? 'Heures et Passion'}</div>
           {data.store?.address && <div>{data.store.address}</div>}
           {data.store?.phone && <div>Tél. {data.store.phone}</div>}
           {data.store?.siret && <div className="text-[10px]">SIRET {data.store.siret}</div>}

@@ -11,9 +11,9 @@ export function Sidebar({ role }: { role: Role }) {
   const pathname = usePathname()
   return (
     <aside className="workspace-sidebar hidden h-full w-20 shrink-0 flex-col bg-[#183b32] text-white md:flex lg:w-64">
-      <Link href="/dashboard" aria-label="Heure et Passion — accueil" className="flex h-24 items-center justify-center gap-3 border-b border-white/10 px-5 lg:justify-start">
+      <Link href="/dashboard" aria-label="Heures et Passion — accueil" className="flex h-24 items-center justify-center gap-3 border-b border-white/10 px-5 lg:justify-start">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-full border border-[#c6b786]/50 text-[#d4c697]"><Watch className="size-5" strokeWidth={1.3} /></span>
-        <span className="hidden lg:block"><span className="block font-playfair text-lg">Heure &amp; Passion</span><span className="mt-1 block text-[9px] tracking-[.24em] text-white/50 uppercase">L’espace boutique</span></span>
+        <span className="hidden lg:block"><span className="block font-playfair text-lg">Heures et Passion</span><span className="mt-1 block text-[9px] tracking-[.24em] text-white/50 uppercase">L’espace boutique</span></span>
       </Link>
       <nav aria-label="Navigation principale" className="flex-1 space-y-1.5 px-3 py-7">
         <p className="mb-4 hidden px-3 text-[10px] tracking-[.18em] text-white/40 uppercase lg:block">Votre quotidien</p>

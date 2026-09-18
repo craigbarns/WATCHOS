@@ -17,7 +17,7 @@ export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; 
   return (
     <div className="print-area mx-auto w-full max-w-[80mm] bg-white p-4 font-mono text-[11px] leading-relaxed text-black">
       <div className="text-center">
-        <div className="font-playfair text-lg font-bold">{receipt.store?.store_name ?? 'Heure et Passion'}</div>
+        <div className="font-playfair text-lg font-bold">{receipt.store?.store_name ?? 'Heures et Passion'}</div>
         {receipt.store?.company_name && <div>{receipt.store.company_name}</div>}
         {receipt.store?.address && <div className="whitespace-pre-line">{receipt.store.address}</div>}
         {receipt.store?.phone && <div>Tél. {receipt.store.phone}</div>}
