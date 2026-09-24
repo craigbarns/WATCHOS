@@ -35,6 +35,11 @@ export function parisDay(date: Date = new Date()): string {
   return date.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })
 }
 
+/** Journée de boutique (YYYY-MM-DD) correspondant à un horodatage */
+export function parisDayOf(value: string | Date): string {
+  return parisDay(new Date(value))
+}
+
 /** Veille (YYYY-MM-DD) dans le fuseau de la boutique */
 export function parisYesterday(date: Date = new Date()): string {
   const day = new Date(`${parisDay(date)}T12:00:00Z`)

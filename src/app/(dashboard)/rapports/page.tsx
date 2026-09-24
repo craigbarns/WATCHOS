@@ -6,7 +6,10 @@ import { Download, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { loadFiscalJournal } from '@/lib/fiscal/load'
-import { formatDate, formatDateTime, formatEuro, parisYesterday } from '@/lib/format'
+import { formatDate, formatDateTime, formatEuro, parisDay, parisDayOf, parisYesterday } from '@/lib/format'
+import { CashSummary } from '@/components/rapports/cash-summary'
+import { ZTicketButton } from '@/components/rapports/z-ticket'
+import type { CashReport } from '@/lib/cash-report'
 import { CloseDayForm } from '@/components/rapports/close-day-form'
 import { ReprintButton } from '@/components/caisse/receipt-dialog'
 
@@ -15,7 +18,16 @@ export default async function RapportsPage() {
   if (profile?.role === 'TECHNICIEN') redirect('/dashboard')
 
   const supabase = await createClient()
-  const { events, closures, eventsCheck, closuresCheck } = await loadFiscalJournal(supabase)
+  const today = parisDay()
+  const [journal, { data: todayReport, error: todayError }, { data: store }] = await Promise.all([
+    loadFiscalJournal(supabase),
+    supabase.rpc('day_cash_report', { p_day: today }),
+    supabase.from('settings').select('store_name, company_name, address, siret, vat_number').limit(1).maybeSingle(),
+  ])
+  const { events, closures, eventsCheck, closuresCheck } = journal
+  const cashToday = (todayReport ?? null) as CashReport | null
+  // La fonction SQL day_cash_report arrive avec la migration 20260922000000_cash_report.sql
+  const cashReportMissing = todayError?.code === 'PGRST202'
 
   const yesterday = parisYesterday()
   const lastClosure = closures.at(-1)
@@ -33,7 +45,10 @@ export default async function RapportsPage() {
         <div>
           <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Rapports &amp; clôtures</h1>
           <p className="text-sm text-muted-foreground">Journal des encaissements, clôtures et archives.</p>
-          <Link href="/statistiques" className="mt-2 inline-block text-sm font-medium text-primary underline underline-offset-4">Voir les ventes par poste →</Link>
+          <div className="mt-2 flex flex-wrap gap-4">
+            <Link href="/rapports/encaissements" className="text-sm font-medium text-primary underline underline-offset-4">Journal des encaissements →</Link>
+            <Link href="/statistiques" className="text-sm font-medium text-primary underline underline-offset-4">Ventes par poste →</Link>
+          </div>
         </div>
         <a
           href="/rapports/archive"
@@ -42,6 +57,39 @@ export default async function RapportsPage() {
           <Download className="size-4" /> Exporter l&apos;archive fiscale
         </a>
       </div>
+
+      {cashReportMissing && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Détail de caisse indisponible</CardTitle>
+            <CardDescription>
+              Exécutez la migration <code className="font-mono">supabase/migrations/20260922000000_cash_report.sql</code> dans
+              Supabase pour afficher la répartition espèces / CB / chèque et le détail des clôtures Z.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {cashToday && (
+        <Card>
+          <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2">
+            <div>
+              <CardTitle>Caisse du jour</CardTitle>
+              <CardDescription>
+                Encaissements du {formatDate(today)}, par mode de règlement. Journée non clôturée.
+              </CardDescription>
+            </div>
+            <ZTicketButton report={cashToday} store={store} closure={null} day={today} label="Aperçu Z" variant="outline" />
+          </CardHeader>
+          <CardContent>
+            {Number(cashToday.tickets) === 0 ? (
+              <p className="py-2 text-sm text-muted-foreground">Aucun encaissement aujourd&apos;hui pour le moment.</p>
+            ) : (
+              <CashSummary report={cashToday} />
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
@@ -111,13 +159,14 @@ export default async function RapportsPage() {
                 <TableHead className="text-right">TVA</TableHead>
                 <TableHead className="text-right">TTC</TableHead>
                 <TableHead className="text-right">Cumul perpétuel</TableHead>
-                <TableHead className="pr-4">Empreinte</TableHead>
+                <TableHead>Empreinte</TableHead>
+                <TableHead className="pr-4 text-right">Détail</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {closures.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="py-8 text-center text-muted-foreground">
+                  <TableCell colSpan={9} className="py-8 text-center text-muted-foreground">
                     Aucune clôture
                   </TableCell>
                 </TableRow>
@@ -131,7 +180,25 @@ export default async function RapportsPage() {
                     <TableCell className="text-right tabular-nums">{formatEuro(c.total_vat)}</TableCell>
                     <TableCell className="text-right font-medium tabular-nums">{formatEuro(c.total_ttc)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatEuro(c.perpetual_total)}</TableCell>
-                    <TableCell className="pr-4 font-mono text-xs text-muted-foreground">{c.current_hash.slice(0, 12)}…</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{c.current_hash.slice(0, 12)}…</TableCell>
+                    <TableCell className="pr-4 text-right">
+                      {c.details ? (
+                        <ZTicketButton
+                          report={c.details}
+                          store={store}
+                          closure={{
+                            sequence_number: c.sequence_number,
+                            perpetual_total: Number(c.perpetual_total),
+                            current_hash: c.current_hash,
+                            created_at: c.created_at,
+                            operator: null,
+                          }}
+                          day={parisDayOf(c.period_start)}
+                        />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                   </TableRow>
                 ))
               )}

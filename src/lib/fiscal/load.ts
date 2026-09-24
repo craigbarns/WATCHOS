@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { verifyClosureChain, verifyFiscalChain, type ClosurePayload, type FiscalPayload } from '@/lib/fiscal/core'
+import type { CashReport } from '@/lib/cash-report'
 
 const PAGE = 1000
 
@@ -39,6 +40,8 @@ export type ClosureRow = {
   previous_hash: string | null
   current_hash: string
   created_at: string
+  /** Détail scellé (règlements, TVA) — absent sur les clôtures antérieures à la version 1.2 */
+  details: CashReport | null
 }
 
 /** Charge l'intégralité des journaux fiscaux et vérifie les deux chaînes. */
