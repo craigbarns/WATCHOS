@@ -48,3 +48,6 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /.test-session.json
+
+# scripts SQL ponctuels, gardés en local
+/*.sql
