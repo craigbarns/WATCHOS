@@ -136,6 +136,13 @@ export async function finalizeSale(
 
 export type ReceiptData = {
   receipt_number: string
+  /** Vrai pour un avoir (annulation) : montants négatifs */
+  is_refund: boolean
+  /** Ticket annulé par cet avoir */
+  cancels_receipt: string | null
+  cancel_reason: string | null
+  /** Avoir ayant annulé cette vente (le ticket n'est alors plus valable) */
+  cancelled_by: { id: string; receipt_number: string; finalized_at: string; reason: string | null } | null
   finalized_at: string
   total_ht: number
   total_vat: number
@@ -154,12 +161,17 @@ export async function getReceipt(saleId: string): Promise<ReceiptData | null> {
   if (!guard.ok || !z.guid().safeParse(saleId).success) return null
 
   const supabase = await createClient()
+  const SALE_COLUMNS =
+    'receipt_number, finalized_at, total_ht, total_vat, total_ttc, parent_sale_id, seller:profiles(full_name), customer:customers(first_name, last_name), sale_lines(label, quantity, unit_price_ttc, discount_amount, total_ttc, total_ht, vat_rate, created_at, item:serialized_items(serial_number)), payments(method, amount)'
+  // cancel_reason n'existe qu'à partir de la migration 20260923000000_refund_sale.sql
+  const saleQuery = async () => {
+    const withReason = await supabase.from('sales').select(`${SALE_COLUMNS}, cancel_reason`).eq('id', saleId).maybeSingle()
+    if (!withReason.error) return withReason
+    return supabase.from('sales').select(SALE_COLUMNS).eq('id', saleId).maybeSingle()
+  }
+
   const [{ data: sale }, { data: store }, { data: event }] = await Promise.all([
-    supabase
-      .from('sales')
-      .select('receipt_number, finalized_at, total_ht, total_vat, total_ttc, seller:profiles(full_name), customer:customers(first_name, last_name), sale_lines(label, quantity, unit_price_ttc, discount_amount, total_ttc, total_ht, vat_rate, created_at, item:serialized_items(serial_number)), payments(method, amount)')
-      .eq('id', saleId)
-      .single(),
+    saleQuery(),
     supabase.from('settings').select('store_name, company_name, address, siret, vat_number, phone').limit(1).maybeSingle(),
     supabase.from('fiscal_events').select('current_hash, sequence_number').eq('entity_id', saleId).maybeSingle(),
   ])
@@ -167,6 +179,8 @@ export async function getReceipt(saleId: string): Promise<ReceiptData | null> {
 
   type Row = {
     receipt_number: string
+    parent_sale_id: string | null
+    cancel_reason?: string | null
     finalized_at: string
     total_ht: number
     total_vat: number
@@ -178,8 +192,32 @@ export async function getReceipt(saleId: string): Promise<ReceiptData | null> {
   }
   const s = sale as unknown as Row
 
+  // Lien avec l'avoir : requêtes explicites (l'auto-jointure sales → sales est ambiguë côté API)
+  const refundQuery = async () => {
+    const withReason = await supabase
+      .from('sales')
+      .select('id, receipt_number, finalized_at, cancel_reason')
+      .eq('parent_sale_id', saleId)
+      .maybeSingle()
+    if (!withReason.error) return withReason
+    return supabase.from('sales').select('id, receipt_number, finalized_at').eq('parent_sale_id', saleId).maybeSingle()
+  }
+
+  const [{ data: parent }, { data: refund }] = await Promise.all([
+    s.parent_sale_id
+      ? supabase.from('sales').select('receipt_number').eq('id', s.parent_sale_id).maybeSingle()
+      : Promise.resolve({ data: null }),
+    refundQuery(),
+  ])
+
   return {
     receipt_number: s.receipt_number,
+    is_refund: s.parent_sale_id !== null,
+    cancels_receipt: parent?.receipt_number ?? null,
+    cancel_reason: s.cancel_reason ?? null,
+    cancelled_by: refund
+      ? { id: refund.id, receipt_number: refund.receipt_number, finalized_at: refund.finalized_at, reason: ('cancel_reason' in refund ? refund.cancel_reason : null) as string | null }
+      : null,
     finalized_at: s.finalized_at,
     total_ht: Number(s.total_ht),
     total_vat: Number(s.total_vat),
@@ -201,4 +239,48 @@ export async function getReceipt(saleId: string): Promise<ReceiptData | null> {
     payments: (s.payments ?? []).map((p) => ({ method: p.method, amount: Number(p.amount) })),
     store,
   }
+}
+
+const refundSchema = z.object({
+  saleId: z.guid(),
+  reason: z.string().trim().min(3, 'Indiquez le motif de l’annulation.').max(500),
+  idempotencyKey: z.string().min(8),
+})
+
+export type RefundResult =
+  | { success: true; refundId: string; receiptNumber: string; replayed?: boolean }
+  | { success: false; error: string }
+
+/** Annule une vente en créant un avoir : la vente d'origine reste intacte. */
+export async function refundSale(saleId: string, reason: string, idempotencyKey: string): Promise<RefundResult> {
+  const guard = await requireStaff(['ADMIN', 'VENDEUR'])
+  if (!guard.ok) return { success: false, error: guard.error }
+
+  const parsed = refundSchema.safeParse({ saleId, reason, idempotencyKey })
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Données invalides.' }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('refund_sale', {
+    p_sale_id: parsed.data.saleId,
+    p_reason: parsed.data.reason,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  })
+
+  if (error) {
+    return {
+      success: false,
+      error:
+        error.code === 'PGRST202'
+          ? 'L’annulation de vente doit d’abord être activée en base (migration 20260923000000_refund_sale.sql).'
+          : error.message,
+    }
+  }
+
+  revalidatePath('/caisse')
+  revalidatePath('/dashboard')
+  revalidatePath('/rapports')
+  revalidatePath('/rapports/encaissements')
+  revalidatePath('/stock', 'layout')
+
+  return { success: true, refundId: data.refund_id, receiptNumber: data.receipt_number, replayed: data.replayed }
 }

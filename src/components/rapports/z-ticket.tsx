@@ -7,7 +7,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { formatDate, formatDateTime, formatEuro } from '@/lib/format'
 import { paymentBreakdown, type CashReport } from '@/lib/cash-report'
 import { printElement } from '@/lib/print'
-import { usePrinterPrefs } from '@/lib/printer-prefs'
 
 export type ZStore = { store_name: string; company_name: string | null; address: string | null; siret: string | null; vat_number: string | null } | null
 
@@ -155,12 +154,11 @@ export function ZTicketButton({
   variant?: 'ghost' | 'outline'
 }) {
   const [open, setOpen] = useState(false)
-  const prefs = usePrinterPrefs()
   const ticketRef = useRef<HTMLDivElement>(null)
 
   const print = () => {
     const el = ticketRef.current?.querySelector<HTMLElement>('.print-area')
-    if (el) printElement(el, prefs.paper)
+    if (el) printElement(el)
   }
 
   return (

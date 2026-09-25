@@ -1,18 +1,12 @@
-export type PaperFormat = '80mm' | '58mm' | 'A5'
-
-/** Largeur réellement imprimable des rouleaux thermiques (les têtes n'impriment pas jusqu'au bord). */
-const PRINTABLE_WIDTH: Record<PaperFormat, string> = {
-  '80mm': '72mm',
-  '58mm': '48mm',
-  A5: '100%',
-}
+/** Largeur imprimable d'un rouleau thermique 80 mm (la tête n'imprime pas jusqu'aux bords). */
+const PRINTABLE_WIDTH = '72mm'
 
 /**
- * Imprime un élément seul, dans une iframe isolée dimensionnée pour le papier visé.
- * Plus fiable que window.print() sur la page entière pour les imprimantes ticket :
- * hauteur de rouleau libre, pas de marges, noir pur.
+ * Imprime un élément seul, dans une iframe isolée au format ticket 80 mm.
+ * Plus fiable que window.print() sur la page entière : hauteur de rouleau
+ * libre, pas de marges, noir pur.
  */
-export function printElement(element: HTMLElement, format: PaperFormat): Promise<void> {
+export function printElement(element: HTMLElement): Promise<void> {
   return new Promise((resolve) => {
     const iframe = document.createElement('iframe')
     iframe.setAttribute('aria-hidden', 'true')
@@ -29,8 +23,6 @@ export function printElement(element: HTMLElement, format: PaperFormat): Promise
 
     // Reprend les feuilles de style de l'application (Tailwind, polices)
     const styles = [...document.querySelectorAll('style, link[rel="stylesheet"]')].map((n) => n.outerHTML).join('\n')
-    const isRoll = format !== 'A5'
-    const page = isRoll ? `@page { size: ${format} auto; margin: 0; }` : '@page { size: A5; margin: 8mm; }'
 
     doc.open()
     doc.write(`<!doctype html>
@@ -39,13 +31,12 @@ export function printElement(element: HTMLElement, format: PaperFormat): Promise
 <meta charset="utf-8">
 ${styles}
 <style>
-  ${page}
+  @page { size: 80mm auto; margin: 0; }
   html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; }
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .print-root { width: ${PRINTABLE_WIDTH[format]}; margin: 0 auto; }
+  .print-root { width: ${PRINTABLE_WIDTH}; margin: 0 auto; }
   .print-root, .print-root * { color: #000 !important; border-color: #000 !important; }
-  ${isRoll ? '.print-root .print-area { max-width: none !important; width: 100% !important; padding: 2mm 0 6mm !important; }' : ''}
-  ${format === '58mm' ? '.print-root .print-area { font-size: 9.5px !important; }' : ''}
+  .print-root .print-area { max-width: none !important; width: 100% !important; padding: 2mm 0 6mm !important; }
 </style>
 </head>
 <body><div class="print-root">${element.outerHTML}</div></body>

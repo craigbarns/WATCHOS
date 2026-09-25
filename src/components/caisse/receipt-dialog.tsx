@@ -1,14 +1,15 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
-import { CheckCircle2, Copy, Loader2, Printer } from 'lucide-react'
+import { useEffect, useRef, useState, useTransition } from 'react'
+import { Ban, CheckCircle2, Copy, Loader2, Printer, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Receipt } from '@/components/caisse/receipt'
-import { getReceipt, type ReceiptData } from '@/app/actions/caisse'
+import { getReceipt, refundSale, type ReceiptData } from '@/app/actions/caisse'
 import { printElement } from '@/lib/print'
 import { setPrinterPrefs, usePrinterPrefs } from '@/lib/printer-prefs'
 import { toast } from '@/components/ui/toast'
+import { formatEuro } from '@/lib/format'
 
 /**
  * Affiche et imprime le ticket d'une vente.
@@ -31,6 +32,11 @@ export function ReceiptDialog({
   const [printing, setPrinting] = useState(false)
   const ticketRef = useRef<HTMLDivElement>(null)
   const autoPrinted = useRef<string | null>(null)
+  const [cancelling, setCancelling] = useState(false)
+  const [reason, setReason] = useState('')
+  const [cancelError, setCancelError] = useState<string | null>(null)
+  const [refunding, startRefund] = useTransition()
+  const [refundId, setRefundId] = useState<string | null>(null)
 
   const loaded = receipt && receipt.saleId === saleId ? receipt.data : null
   const loading = saleId !== null && receipt?.saleId !== saleId
@@ -52,7 +58,7 @@ export function ReceiptDialog({
     const el = ticketRef.current?.querySelector<HTMLElement>('.print-area')
     if (!el) return
     setPrinting(true)
-    await printElement(el, prefs.paper)
+    await printElement(el)
     setPrinting(false)
   }
 
@@ -61,10 +67,11 @@ export function ReceiptDialog({
     if (!loaded || duplicate || !prefs.autoPrint || !saleId || autoPrinted.current === saleId) return
     autoPrinted.current = saleId
     const el = ticketRef.current?.querySelector<HTMLElement>('.print-area')
-    if (el) printElement(el, prefs.paper)
-  }, [loaded, duplicate, prefs.autoPrint, prefs.paper, saleId])
+    if (el) printElement(el)
+  }, [loaded, duplicate, prefs.autoPrint, saleId])
 
   return (
+    <>
     <Dialog open={saleId !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>
@@ -93,17 +100,60 @@ export function ReceiptDialog({
           )
         )}
 
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-muted/60 px-3 py-2 text-sm">
-          <span className="text-muted-foreground">Imprimante de ce poste :</span>
-          <select
-            value={prefs.paper}
-            onChange={(e) => setPrinterPrefs({ paper: e.target.value as '80mm' | '58mm' })}
-            className="h-7 rounded-md border border-input bg-background px-1.5 text-sm"
-            aria-label="Largeur du rouleau"
+        {cancelling && loaded && (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              setCancelError(null)
+              startRefund(async () => {
+                const result = await refundSale(saleId!, reason, crypto.randomUUID())
+                if (!result.success) {
+                  setCancelError(result.error)
+                  return
+                }
+                toast.add({ title: `Vente annulée — avoir ${result.receiptNumber}`, type: 'success' })
+                setCancelling(false)
+                setRefundId(result.refundId)
+                onClose()
+              })
+            }}
+            className="grid gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm"
           >
-            <option value="80mm">Rouleau 80 mm</option>
-            <option value="58mm">Rouleau 58 mm</option>
-          </select>
+            <p className="flex items-start gap-2 font-medium">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0 text-destructive" />
+              Annuler le ticket {loaded.receipt_number} ({formatEuro(loaded.total_ttc)}) ?
+            </p>
+            <p className="text-xs text-muted-foreground">
+              La vente reste enregistrée, comme l&apos;impose la réglementation. Un avoir est créé : les règlements sont
+              remboursés dans les totaux et les articles reviennent en stock.
+            </p>
+            <label htmlFor="cancel-reason" className="text-xs font-medium">
+              Motif *
+            </label>
+            <input
+              id="cancel-reason"
+              required
+              minLength={3}
+              autoFocus
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Erreur de saisie, client s’est ravisé, mauvais article…"
+              className="h-9 rounded-lg border border-input bg-background px-2.5 outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            />
+            {cancelError && <p className="text-sm text-destructive">{cancelError}</p>}
+            <div className="flex gap-2">
+              <Button type="submit" variant="destructive" disabled={refunding} className="h-9">
+                {refunding ? 'Annulation…' : 'Confirmer l’annulation'}
+              </Button>
+              <Button type="button" variant="ghost" className="h-9" onClick={() => setCancelling(false)}>
+                Retour
+              </Button>
+            </div>
+          </form>
+        )}
+
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg bg-muted/60 px-3 py-2 text-sm">
+          <span className="text-muted-foreground">Imprimante ticket 80 mm</span>
           {!duplicate && (
             <label className="flex items-center gap-1.5">
               <input type="checkbox" checked={prefs.autoPrint} onChange={(e) => setPrinterPrefs({ autoPrint: e.target.checked })} />
@@ -112,7 +162,18 @@ export function ReceiptDialog({
           )}
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="sm:justify-between">
+          {loaded && !loaded.is_refund && !loaded.cancelled_by && !cancelling ? (
+            <Button variant="ghost" className="text-destructive sm:mr-auto" onClick={() => {
+                setReason('')
+                setCancelError(null)
+                setCancelling(true)
+              }}>
+              <Ban /> Annuler la vente
+            </Button>
+          ) : (
+            <span className="hidden sm:block" />
+          )}
           <Button variant="outline" onClick={print} disabled={!loaded || printing}>
             {printing ? <Loader2 className="animate-spin" /> : <Printer />} {duplicate ? 'Imprimer le duplicata' : 'Imprimer le ticket'}
           </Button>
@@ -122,6 +183,10 @@ export function ReceiptDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    {/* Ticket d'avoir, imprimable et remis au client */}
+    {refundId && <ReceiptDialog saleId={refundId} onClose={() => setRefundId(null)} closeLabel="Fermer" />}
+    </>
   )
 }
 

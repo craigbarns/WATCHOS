@@ -25,6 +25,15 @@ export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; 
         {receipt.store?.vat_number && <div>TVA {receipt.store.vat_number}</div>}
       </div>
 
+      {receipt.is_refund && (
+        <div className="mt-2 border-2 border-black py-1 text-center text-sm font-bold tracking-[0.2em]">AVOIR — ANNULATION</div>
+      )}
+      {receipt.cancelled_by && !receipt.is_refund && (
+        <div className="mt-2 border-2 border-black py-1 text-center text-[11px] font-bold">
+          TICKET ANNULÉ LE {formatDateAndTime(receipt.cancelled_by.finalized_at).date}
+          <div className="font-normal">Avoir {receipt.cancelled_by.receipt_number}</div>
+        </div>
+      )}
       {duplicate && (
         <div className="mt-2 border-2 border-black py-0.5 text-center text-sm font-bold tracking-[0.3em]">DUPLICATA</div>
       )}
@@ -49,7 +58,14 @@ export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; 
           </span>
         </div>
       )}
-      {receipt.seller && <div>Vendeur : {receipt.seller}</div>}
+      {receipt.cancels_receipt && (
+        <div className="flex justify-between">
+          <span>Annule le ticket</span>
+          <span>{receipt.cancels_receipt}</span>
+        </div>
+      )}
+      {receipt.cancel_reason && <div className="whitespace-pre-line">Motif : {receipt.cancel_reason}</div>}
+      {receipt.seller && <div>{receipt.is_refund ? 'Opérateur' : 'Vendeur'} : {receipt.seller}</div>}
       {receipt.customer && (
         <div>
           Client : {receipt.customer.first_name} {receipt.customer.last_name}
@@ -78,7 +94,7 @@ export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; 
 
       <div className="my-2 border-t border-dashed border-black" />
       <div className="flex justify-between text-sm font-bold">
-        <span>TOTAL TTC</span>
+        <span>{receipt.is_refund ? 'TOTAL REMBOURSÉ' : 'TOTAL TTC'}</span>
         <span>{formatEuro(receipt.total_ttc)}</span>
       </div>
       <div className="mt-1">

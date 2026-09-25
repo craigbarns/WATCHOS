@@ -5,8 +5,7 @@ import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { formatDate, formatDateTime, formatEuro } from '@/lib/format'
-import { printElement, type PaperFormat } from '@/lib/print'
-import { usePrinterPrefs } from '@/lib/printer-prefs'
+import { printElement } from '@/lib/print'
 
 export type DepositSlipData = {
   case_number: string
@@ -26,17 +25,14 @@ export type DepositSlipData = {
   store: { store_name: string; company_name: string | null; address: string | null; phone: string | null; siret: string | null } | null
 }
 
-/** Bon de dépôt remis au client (format A5, deux exemplaires : client + boutique). */
+/** Bon de dépôt remis au client, imprimé sur l'imprimante ticket 80 mm. */
 export function SavDepositSlipButton({ data }: { data: DepositSlipData }) {
   const [open, setOpen] = useState(false)
-  const [format, setFormat] = useState<'A5' | 'TICKET'>('A5')
-  const prefs = usePrinterPrefs()
   const slipRef = useRef<HTMLDivElement>(null)
 
   const print = () => {
     const el = slipRef.current?.querySelector<HTMLElement>('.print-area')
-    const paper: PaperFormat = format === 'A5' ? 'A5' : prefs.paper
-    if (el) printElement(el, paper)
+    if (el) printElement(el)
   }
 
   return (
@@ -45,21 +41,12 @@ export function SavDepositSlipButton({ data }: { data: DepositSlipData }) {
         <Printer /> Bon de dépôt
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-2xl">
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-lg">Bon de dépôt {data.case_number}</DialogTitle>
           </DialogHeader>
           <div ref={slipRef} className="rounded-lg border">
             <DepositSlip data={data} />
-          </div>
-          <div className="flex items-center gap-3 text-sm">
-            <span className="text-muted-foreground">Format :</span>
-            {(['A5', 'TICKET'] as const).map((f) => (
-              <label key={f} className="flex items-center gap-1.5">
-                <input type="radio" name="slip-format" checked={format === f} onChange={() => setFormat(f)} />
-                {f === 'A5' ? 'Feuille A5 (avec signatures)' : `Imprimante ticket (${prefs.paper})`}
-              </label>
-            ))}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
@@ -89,50 +76,47 @@ function DepositSlip({ data }: { data: DepositSlipData }) {
   ]
 
   return (
-    <div className="print-area bg-white p-6 text-[12px] leading-relaxed text-black">
-      <div className="flex items-start justify-between border-b border-black pb-3">
-        <div>
-          <div className="font-playfair text-xl font-bold">{data.store?.store_name ?? 'Heures et Passion'}</div>
-          {data.store?.address && <div>{data.store.address}</div>}
-          {data.store?.phone && <div>Tél. {data.store.phone}</div>}
-          {data.store?.siret && <div className="text-[10px]">SIRET {data.store.siret}</div>}
-        </div>
-        <div className="text-right">
-          <div className="text-[10px] tracking-widest uppercase">Bon de dépôt SAV</div>
-          <div className="font-mono text-lg font-bold">{data.case_number}</div>
-          <div>{formatDateTime(data.deposit_date)}</div>
-        </div>
+    <div className="print-area mx-auto w-full max-w-[80mm] bg-white p-4 font-mono text-[11px] leading-relaxed text-black">
+      <div className="text-center">
+        <div className="font-playfair text-lg font-bold">{data.store?.store_name ?? 'Heures et Passion'}</div>
+        {data.store?.address && <div className="whitespace-pre-line">{data.store.address}</div>}
+        {data.store?.phone && <div>Tél. {data.store.phone}</div>}
+        {data.store?.siret && <div className="text-[9px]">SIRET {data.store.siret}</div>}
       </div>
 
-      <div className="mt-3">
-        <div className="text-[10px] tracking-widest uppercase">Client</div>
-        <div className="font-semibold">
-          {[data.customer?.civility, data.customer?.first_name, data.customer?.last_name].filter(Boolean).join(' ')}
-        </div>
-        <div>{[data.customer?.phone, data.customer?.email].filter(Boolean).join(' · ')}</div>
+      <div className="my-2 border-y-2 border-black py-1 text-center text-sm font-bold tracking-[0.2em]">BON DE DÉPÔT</div>
+
+      <div className="flex justify-between font-semibold">
+        <span>Dossier</span>
+        <span>{data.case_number}</span>
+      </div>
+      <div className="flex justify-between">
+        <span>Déposée le</span>
+        <span>{formatDateTime(data.deposit_date)}</span>
       </div>
 
-      <table className="mt-3 w-full border-collapse">
-        <tbody>
-          {rows.map(([label, value]) => (
-            <tr key={label} className="border-b border-black/20 align-top">
-              <td className="w-40 py-1.5 pr-3 text-[11px] font-semibold">{label}</td>
-              <td className="py-1.5 whitespace-pre-line">{value || '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="my-2 border-t border-dashed border-black" />
+      <div className="font-bold">CLIENT</div>
+      <div>{[data.customer?.civility, data.customer?.first_name, data.customer?.last_name].filter(Boolean).join(' ')}</div>
+      {data.customer?.phone && <div>{data.customer.phone}</div>}
+      {data.customer?.email && <div className="break-all">{data.customer.email}</div>}
 
-      <p className="mt-3 text-[10px]">
+      <div className="my-2 border-t border-dashed border-black" />
+      {rows.map(([label, value]) => (
+        <div key={label} className="mb-1.5">
+          <div className="text-[9px] tracking-wide uppercase">{label}</div>
+          <div className="whitespace-pre-line">{value || '—'}</div>
+        </div>
+      ))}
+
+      <div className="my-2 border-t border-dashed border-black" />
+      <p className="text-[9px] leading-snug">
         Présentez ce bon pour récupérer votre montre. Un devis vous sera communiqué avant toute intervention payante.
-        Les montres non réclamées dans un délai d&apos;un an après avis de mise à disposition pourront faire l&apos;objet
-        des démarches prévues par la loi.
+        Montres non réclamées : voir les conditions de la boutique.
       </p>
 
-      <div className="mt-6 grid grid-cols-2 gap-6 text-[11px]">
-        <div className="h-16 border-t border-black pt-1">Signature du client</div>
-        <div className="h-16 border-t border-black pt-1">Signature boutique</div>
-      </div>
+      <div className="mt-6 border-t border-black pt-1 text-[9px]">Signature du client</div>
+      <div className="mt-6 border-t border-black pt-1 text-[9px]">Signature boutique</div>
     </div>
   )
 }
