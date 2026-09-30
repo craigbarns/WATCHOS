@@ -46,6 +46,7 @@ export default async function RapportsPage() {
           <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Rapports &amp; clôtures</h1>
           <p className="text-sm text-muted-foreground">Journal des encaissements, clôtures et archives.</p>
           <div className="mt-2 flex flex-wrap gap-4">
+            <Link href="/rapports/ventes" className="text-sm font-medium text-primary underline underline-offset-4">Ventes du jour →</Link>
             <Link href="/rapports/encaissements" className="text-sm font-medium text-primary underline underline-offset-4">Journal des encaissements →</Link>
             <Link href="/statistiques" className="text-sm font-medium text-primary underline underline-offset-4">Ventes par poste →</Link>
           </div>
@@ -79,7 +80,15 @@ export default async function RapportsPage() {
                 Encaissements du {formatDate(today)}, par mode de règlement. Journée non clôturée.
               </CardDescription>
             </div>
-            <ZTicketButton report={cashToday} store={store} closure={null} day={today} label="Aperçu Z" variant="outline" />
+            <div className="flex gap-2">
+              <Link
+                href="/rapports/ventes"
+                className="inline-flex h-9 items-center rounded-lg border px-3 text-sm font-medium hover:bg-muted"
+              >
+                Voir les ventes
+              </Link>
+              <ZTicketButton report={cashToday} store={store} closure={null} day={today} label="Aperçu Z" variant="outline" />
+            </div>
           </CardHeader>
           <CardContent>
             {Number(cashToday.tickets) === 0 ? (

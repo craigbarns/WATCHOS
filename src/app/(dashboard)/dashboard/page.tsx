@@ -129,7 +129,7 @@ export default async function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Dernières ventes</CardTitle>
-            {canSell && <Link href="/rapports" className="text-xs text-muted-foreground hover:text-foreground">Journal →</Link>}
+            {canSell && <Link href="/rapports/ventes" className="text-xs text-muted-foreground hover:text-foreground">Toutes les ventes du jour →</Link>}
           </CardHeader>
           <CardContent>
             {(recentSales.data ?? []).length === 0 ? (
