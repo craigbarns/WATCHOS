@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/auth'
-import { formatDate, formatEuro, PAYMENT_LABELS, parisDay, parisDayStartISO } from '@/lib/format'
+import { formatDate, formatDateTime, formatEuro, PAYMENT_LABELS, parisDay, parisDayOf, parisDayStartISO } from '@/lib/format'
 import type { CashReport } from '@/lib/cash-report'
 import { paymentBreakdown } from '@/lib/cash-report'
 import { ReprintButton } from '@/components/caisse/receipt-dialog'
@@ -35,40 +35,60 @@ const shiftDay = (day: string, days: number) => {
 const hour = (value: string) =>
   new Date(value).toLocaleTimeString('fr-FR', { timeZone: 'Europe/Paris', hour: '2-digit', minute: '2-digit' })
 
-export default async function VentesDuJourPage({ searchParams }: { searchParams: Promise<{ jour?: string }> }) {
+const PAGE_SIZE = 100
+
+export default async function VentesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ du?: string; au?: string; jour?: string; page?: string }>
+}) {
   const guard = await requireStaff(['ADMIN', 'VENDEUR'])
   if (!guard.ok) redirect('/dashboard')
 
   const today = parisDay()
   const params = await searchParams
-  const day = /^\d{4}-\d{2}-\d{2}$/.test(params.jour ?? '') ? params.jour! : today
+  const isDay = (value: string | undefined): value is string => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')
+  // ?jour=… reste accepté (anciens liens) et vaut une période d'une journée
+  const start = isDay(params.jour) ? params.jour : isDay(params.du) ? params.du : today
+  const end = isDay(params.jour) ? params.jour : isDay(params.au) ? params.au : today
+  const page = Math.max(1, Number(params.page) || 1)
 
-  let dayStart: string
-  let dayEnd: string
+  let rangeStart: string
+  let rangeEnd: string
+  let valid = start <= end
   try {
-    dayStart = parisDayStartISO(day)
-    dayEnd = parisDayStartISO(shiftDay(day, 1))
+    rangeStart = parisDayStartISO(start)
+    rangeEnd = parisDayStartISO(shiftDay(end, 1))
   } catch {
-    redirect('/rapports/ventes')
+    valid = false
+    rangeStart = parisDayStartISO(today)
+    rangeEnd = parisDayStartISO(shiftDay(today, 1))
   }
 
   const supabase = await createClient()
-  const [{ data: salesData, error }, { data: report }] = await Promise.all([
+  const from = (page - 1) * PAGE_SIZE
+  const [{ data: salesData, error, count }, { data: report }, { data: firstSale }] = await Promise.all([
     supabase
       .from('sales')
       .select(
-        'id, receipt_number, finalized_at, total_ttc, total_ht, parent_sale_id, customer:customers(first_name, last_name), seller:profiles(full_name), sale_lines(label, quantity), payments(method, amount)'
+        'id, receipt_number, finalized_at, total_ttc, total_ht, parent_sale_id, customer:customers(first_name, last_name), seller:profiles(full_name), sale_lines(label, quantity), payments(method, amount)',
+        { count: 'exact' }
       )
       .eq('status', 'FINALIZED')
-      .gte('finalized_at', dayStart)
-      .lt('finalized_at', dayEnd)
-      .order('finalized_at', { ascending: false }),
-    supabase.rpc('day_cash_report', { p_day: day }),
+      .gte('finalized_at', rangeStart)
+      .lt('finalized_at', rangeEnd)
+      .order('finalized_at', { ascending: false })
+      .range(from, from + PAGE_SIZE - 1),
+    supabase.rpc('cash_report', { p_start: rangeStart, p_end: rangeEnd }),
+    supabase.from('sales').select('finalized_at').eq('status', 'FINALIZED').order('finalized_at').limit(1).maybeSingle(),
   ])
   if (error) throw new Error('Les ventes ne peuvent pas être chargées.')
 
   const sales = (salesData ?? []) as unknown as SaleRow[]
   const cash = (report ?? null) as CashReport | null
+  const totalCount = count ?? sales.length
+  const pageCount = Math.max(1, Math.ceil(totalCount / PAGE_SIZE))
+  const firstDay = firstSale?.finalized_at ? parisDayOf(firstSale.finalized_at) : today
 
   // Tickets annulés : les avoirs qui les référencent, même créés un autre jour
   const ids = sales.filter((s) => !s.parent_sale_id).map((s) => s.id)
@@ -77,12 +97,21 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
     : { data: [] }
   const cancelledBy = new Map((refunds ?? []).map((r) => [r.parent_sale_id as string, r.receipt_number as string]))
 
-  const totalTTC = sales.reduce((s, r) => s + Number(r.total_ttc), 0)
-  const totalHT = sales.reduce((s, r) => s + Number(r.total_ht), 0)
+  const totalTTC = cash ? Number(cash.total_ttc) : sales.reduce((s, r) => s + Number(r.total_ttc), 0)
+  const totalHT = cash ? Number(cash.total_ht) : sales.reduce((s, r) => s + Number(r.total_ht), 0)
   const refundCount = sales.filter((s) => s.parent_sale_id).length
   const methods = cash ? paymentBreakdown(cash).filter((m) => m.count > 0) : []
 
-  const linkTo = (target: string) => `/rapports/ventes?jour=${target}`
+  const linkTo = (du: string, au: string, p = 1) =>
+    `/rapports/ventes?du=${du}&au=${au}${p > 1 ? `&page=${p}` : ''}`
+  const ranges: Array<[string, string, string]> = [
+    ['Aujourd’hui', today, today],
+    ['Hier', shiftDay(today, -1), shiftDay(today, -1)],
+    ['7 derniers jours', shiftDay(today, -6), today],
+    ['Ce mois', `${today.slice(0, 8)}01`, today],
+    ['Depuis le début', firstDay, today],
+  ]
+  const sameDay = start === end
 
   return (
     <div className="space-y-6">
@@ -90,47 +119,75 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
         <Link href="/rapports" className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
           <ArrowLeft className="size-4" /> Rapports
         </Link>
-        <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Ventes du {formatDate(day)}</h1>
+        <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">
+          {sameDay ? `Ventes du ${formatDate(start)}` : 'Ventes'}
+        </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Toutes les ventes de la journée, de la plus récente à la plus ancienne.
+          {sameDay
+            ? 'Toutes les ventes de la journée, de la plus récente à la plus ancienne.'
+            : `Du ${formatDate(start)} au ${formatDate(end)}, dates incluses.`}
         </p>
       </div>
 
+      <div className="scrollbar-none -mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0">
+        {ranges.map(([label, du, au]) => (
+          <Link
+            key={label}
+            href={linkTo(du, au)}
+            className={cn(
+              'shrink-0 rounded-full border px-3 py-1.5 text-sm whitespace-nowrap transition-colors',
+              start === du && end === au ? 'border-primary bg-primary/5 font-medium' : 'hover:bg-muted'
+            )}
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
+
       <div className="flex flex-wrap items-end gap-3">
-        <Link
-          href={linkTo(shiftDay(day, -1))}
-          className="inline-flex h-10 items-center gap-1 rounded-lg border px-3 text-sm hover:bg-muted"
-        >
-          <ChevronLeft className="size-4" /> Veille
-        </Link>
-        <form className="flex items-end gap-2">
+        {sameDay && (
+          <Link
+            href={linkTo(shiftDay(start, -1), shiftDay(start, -1))}
+            className="inline-flex h-10 items-center gap-1 rounded-lg border px-3 text-sm hover:bg-muted"
+            aria-label="Journée précédente"
+          >
+            <ChevronLeft className="size-4" /> Veille
+          </Link>
+        )}
+        <form className="flex flex-wrap items-end gap-2">
           <div className="grid gap-1.5">
-            <label htmlFor="jour" className="text-sm">Journée</label>
-            <Input id="jour" name="jour" type="date" defaultValue={day} max={today} required />
+            <label htmlFor="du" className="text-sm">Du</label>
+            <Input id="du" name="du" type="date" defaultValue={start} max={today} required />
+          </div>
+          <div className="grid gap-1.5">
+            <label htmlFor="au" className="text-sm">Au</label>
+            <Input id="au" name="au" type="date" defaultValue={end} max={today} required />
           </div>
           <Button type="submit" className="h-10 sm:h-9">Afficher</Button>
         </form>
-        {day < today && (
+        {sameDay && start < today && (
           <Link
-            href={linkTo(shiftDay(day, 1))}
+            href={linkTo(shiftDay(start, 1), shiftDay(start, 1))}
             className="inline-flex h-10 items-center gap-1 rounded-lg border px-3 text-sm hover:bg-muted"
+            aria-label="Journée suivante"
           >
             Lendemain <ChevronRight className="size-4" />
           </Link>
         )}
-        {day !== today && (
-          <Link href={linkTo(today)} className="px-1 py-2 text-sm text-primary underline underline-offset-4">
-            Aujourd’hui
-          </Link>
-        )}
       </div>
+
+      {!valid && (
+        <p role="alert" className="text-destructive">
+          Choisissez des dates valides, la date de début devant précéder la date de fin.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          ['Tickets', String(sales.length)],
+          ['Tickets', String(totalCount)],
           ['Total TTC', formatEuro(totalTTC)],
           ['Total HT', formatEuro(totalHT)],
-          ['Panier moyen', formatEuro(sales.length ? totalTTC / sales.length : 0)],
+          ['Panier moyen', formatEuro(totalCount ? totalTTC / totalCount : 0)],
         ].map(([label, value]) => (
           <Card key={label}>
             <CardHeader className="pb-1">
@@ -144,9 +201,12 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
       {methods.length > 0 && (
         <p className="text-sm text-muted-foreground">
           {methods.map((m) => `${m.label} ${formatEuro(m.amount)}`).join(' · ')}
-          {refundCount > 0 && ` · ${refundCount} annulation(s)`}
+          {refundCount > 0 && ` · ${refundCount} annulation(s) sur cette page`}
           {' · '}
-          <Link href={`/rapports/encaissements?du=${day}&au=${day}&mode=TOUS`} className="text-primary underline underline-offset-4">
+          <Link
+            href={`/rapports/encaissements?du=${start}&au=${end}&mode=TOUS`}
+            className="text-primary underline underline-offset-4"
+          >
             détail des règlements
           </Link>
         </p>
@@ -154,12 +214,15 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
 
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-3">
-          <CardTitle className="text-base">{sales.length} vente(s)</CardTitle>
+          <CardTitle className="text-base">
+            {totalCount} vente(s)
+            {pageCount > 1 && ` · page ${page} sur ${pageCount}`}
+          </CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <ul className="divide-y md:hidden">
             {sales.length === 0 ? (
-              <li className="py-10 text-center text-sm text-muted-foreground">Aucune vente ce jour-là</li>
+              <li className="py-10 text-center text-sm text-muted-foreground">Aucune vente sur cette période</li>
             ) : (
               sales.map((sale) => {
                 const cancelled = cancelledBy.get(sale.id)
@@ -168,7 +231,9 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-sm font-medium">{sale.receipt_number}</span>
-                        <span className="text-xs text-muted-foreground">{hour(sale.finalized_at)}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {sameDay ? hour(sale.finalized_at) : formatDateTime(sale.finalized_at)}
+                        </span>
                         {sale.parent_sale_id && (
                           <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                             Avoir
@@ -205,7 +270,7 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="pl-4">Heure</TableHead>
+                  <TableHead className="pl-4">{sameDay ? 'Heure' : 'Date'}</TableHead>
                   <TableHead>Ticket</TableHead>
                   <TableHead>Articles</TableHead>
                   <TableHead>Client</TableHead>
@@ -219,7 +284,7 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
                 {sales.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                      Aucune vente ce jour-là
+                      Aucune vente sur cette période
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -227,7 +292,9 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
                     const cancelled = cancelledBy.get(sale.id)
                     return (
                       <TableRow key={sale.id} className={cn(cancelled && 'text-muted-foreground')}>
-                        <TableCell className="pl-4 tabular-nums">{hour(sale.finalized_at)}</TableCell>
+                        <TableCell className="pl-4 whitespace-nowrap tabular-nums">
+                          {sameDay ? hour(sale.finalized_at) : formatDateTime(sale.finalized_at)}
+                        </TableCell>
                         <TableCell className="font-mono text-xs">
                           {sale.receipt_number}
                           {sale.parent_sale_id && <span className="ml-1 text-[11px] text-amber-700 dark:text-amber-400">avoir</span>}
@@ -260,6 +327,28 @@ export default async function VentesDuJourPage({ searchParams }: { searchParams:
               </TableBody>
             </Table>
           </div>
+
+          {pageCount > 1 && (
+            <div className="flex items-center justify-between gap-3 border-t px-4 py-3 text-sm">
+              {page > 1 ? (
+                <Link href={linkTo(start, end, page - 1)} className="inline-flex items-center gap-1 hover:underline">
+                  <ChevronLeft className="size-4" /> Précédentes
+                </Link>
+              ) : (
+                <span />
+              )}
+              <span className="text-muted-foreground">
+                Ventes {from + 1} à {Math.min(from + PAGE_SIZE, totalCount)} sur {totalCount}
+              </span>
+              {page < pageCount ? (
+                <Link href={linkTo(start, end, page + 1)} className="inline-flex items-center gap-1 hover:underline">
+                  Suivantes <ChevronRight className="size-4" />
+                </Link>
+              ) : (
+                <span />
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
