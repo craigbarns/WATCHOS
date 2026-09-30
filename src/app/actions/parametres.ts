@@ -233,6 +233,6 @@ export async function deleteStaffMember(userId: string): Promise<{ success: true
 /** Diagnostic de la configuration SMS : la clé est-elle acceptée par SMS Partner ? */
 export async function testSmsAccount() {
   const guard = await requireStaff(['ADMIN'])
-  if (!guard.ok) return { success: false as const, error: guard.error, keyLength: 0 }
+  if (!guard.ok) return { success: false as const, error: guard.error, keyLength: 0, keyHint: '—' }
   return checkSmsAccount()
 }

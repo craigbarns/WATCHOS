@@ -47,8 +47,8 @@ export function SmsStatus() {
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
             <li>
-              Clé lue par le serveur : <strong>{result.keyLength} caractères</strong>. Comparez avec celle affichée dans
-              SMS Partner : si elle est plus courte, la copie est incomplète.
+              Clé lue par le serveur : <strong className="font-mono">{result.keyHint}</strong> ({result.keyLength}{' '}
+              caractères). Comparez-la avec celle affichée dans SMS Partner : si elle diffère, c’est une ancienne clé.
             </li>
             <li>La variable doit être définie pour l’environnement <strong>Production</strong>, puis le site redéployé.</li>
             <li>Si vous avez régénéré la clé après l’avoir collée, remettez la nouvelle valeur.</li>

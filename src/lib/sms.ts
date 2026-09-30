@@ -126,13 +126,19 @@ export async function sendSms(phone: string | null | undefined, message: string)
 }
 
 export type SmsAccount =
-  | { success: true; balance: number | null; currency: string | null; keyLength: number; sandbox: boolean }
-  | { success: false; error: string; keyLength: number }
+  | { success: true; balance: number | null; currency: string | null; keyLength: number; keyHint: string; sandbox: boolean }
+  | { success: false; error: string; keyLength: number; keyHint: string }
+
+/** Empreinte lisible d'une clé, pour la comparer sans l'exposer : « 76e…8fb ». */
+function keyHint(key: string | null): string {
+  if (!key) return '—'
+  return key.length <= 8 ? `${key.slice(0, 2)}…${key.slice(-2)}` : `${key.slice(0, 3)}…${key.slice(-3)}`
+}
 
 /** Vérifie la clé auprès de SMS Partner (endpoint /v1/me) : aucun SMS envoyé, aucun crédit consommé. */
 export async function checkSmsAccount(): Promise<SmsAccount> {
   const apiKey = smsApiKey()
-  if (!apiKey) return { success: false, error: 'Aucune clé configurée sur le serveur (SMS_PARTNER_API_KEY).', keyLength: 0 }
+  if (!apiKey) return { success: false, error: 'Aucune clé configurée sur le serveur (SMS_PARTNER_API_KEY).', keyLength: 0, keyHint: '—' }
 
   let response: Response
   try {
@@ -141,7 +147,7 @@ export async function checkSmsAccount(): Promise<SmsAccount> {
       signal: AbortSignal.timeout(15_000),
     })
   } catch {
-    return { success: false, error: 'Le service SMS n’a pas répondu.', keyLength: apiKey.length }
+    return { success: false, error: 'Le service SMS n’a pas répondu.', keyLength: apiKey.length, keyHint: keyHint(apiKey) }
   }
 
   let data: {
@@ -157,7 +163,7 @@ export async function checkSmsAccount(): Promise<SmsAccount> {
   try {
     data = await response.json()
   } catch {
-    return { success: false, error: `Réponse inattendue (code HTTP ${response.status}).`, keyLength: apiKey.length }
+    return { success: false, error: `Réponse inattendue (code HTTP ${response.status}).`, keyLength: apiKey.length, keyHint: keyHint(apiKey) }
   }
 
   if (!data.success) {
@@ -165,6 +171,7 @@ export async function checkSmsAccount(): Promise<SmsAccount> {
       success: false,
       error: data.message ?? ERRORS[data.code ?? 0] ?? 'Clé refusée par SMS Partner.',
       keyLength: apiKey.length,
+      keyHint: keyHint(apiKey),
     }
   }
 
@@ -174,6 +181,7 @@ export async function checkSmsAccount(): Promise<SmsAccount> {
     balance: balance === undefined || balance === null ? null : Number(balance),
     currency: data.currency ?? 'EUR',
     keyLength: apiKey.length,
+    keyHint: keyHint(apiKey),
     sandbox: process.env.SMS_SANDBOX === '1',
   }
 }
