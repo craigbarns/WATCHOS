@@ -12,7 +12,10 @@ export type SmsResult =
   | { success: true; segments: number; cost: number | null; sandbox: boolean }
   | { success: false; error: string }
 
-export const hasSmsKey = () => Boolean(process.env.SMS_PARTNER_API_KEY)
+/** Une clé collée depuis le navigateur traîne souvent un espace ou un retour à la ligne. */
+export const smsApiKey = () => process.env.SMS_PARTNER_API_KEY?.trim().replace(/^["']|["']$/g, '') || null
+
+export const hasSmsKey = () => Boolean(smsApiKey())
 
 /** GSM-7 : les caractères typographiques coûtent un SMS de plus, on les remplace. */
 export function smsSafeText(text: string): string {
@@ -69,7 +72,7 @@ const ERRORS: Record<number, string> = {
 }
 
 export async function sendSms(phone: string | null | undefined, message: string): Promise<SmsResult> {
-  const apiKey = process.env.SMS_PARTNER_API_KEY
+  const apiKey = smsApiKey()
   if (!apiKey) {
     return { success: false, error: 'L’envoi de SMS n’est pas configuré : ajoutez SMS_PARTNER_API_KEY sur le serveur.' }
   }
@@ -119,5 +122,58 @@ export async function sendSms(phone: string | null | undefined, message: string)
     segments: Number(data.nb_sms ?? smsSegments(text)),
     cost: data.cost === undefined ? null : Number(data.cost),
     sandbox,
+  }
+}
+
+export type SmsAccount =
+  | { success: true; balance: number | null; currency: string | null; keyLength: number; sandbox: boolean }
+  | { success: false; error: string; keyLength: number }
+
+/** Vérifie la clé auprès de SMS Partner (endpoint /v1/me) : aucun SMS envoyé, aucun crédit consommé. */
+export async function checkSmsAccount(): Promise<SmsAccount> {
+  const apiKey = smsApiKey()
+  if (!apiKey) return { success: false, error: 'Aucune clé configurée sur le serveur (SMS_PARTNER_API_KEY).', keyLength: 0 }
+
+  let response: Response
+  try {
+    response = await fetch(`https://api.smspartner.fr/v1/me?apiKey=${encodeURIComponent(apiKey)}&_format=json`, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(15_000),
+    })
+  } catch {
+    return { success: false, error: 'Le service SMS n’a pas répondu.', keyLength: apiKey.length }
+  }
+
+  let data: {
+    success?: boolean
+    code?: number
+    credits?: number | string | null
+    solde?: number | string | null
+    balance?: number | string | null
+    currency?: string
+    message?: string
+    user?: { email?: string } | null
+  } = {}
+  try {
+    data = await response.json()
+  } catch {
+    return { success: false, error: `Réponse inattendue (code HTTP ${response.status}).`, keyLength: apiKey.length }
+  }
+
+  if (!data.success) {
+    return {
+      success: false,
+      error: data.message ?? ERRORS[data.code ?? 0] ?? 'Clé refusée par SMS Partner.',
+      keyLength: apiKey.length,
+    }
+  }
+
+  const balance = data.credits ?? data.solde ?? data.balance
+  return {
+    success: true,
+    balance: balance === undefined || balance === null ? null : Number(balance),
+    currency: data.currency ?? 'EUR',
+    keyLength: apiKey.length,
+    sandbox: process.env.SMS_SANDBOX === '1',
   }
 }

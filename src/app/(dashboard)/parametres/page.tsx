@@ -5,6 +5,7 @@ import { getCurrentProfile } from '@/lib/auth'
 import { SettingsForm } from '@/components/parametres/settings-form'
 import { TeamTable, type TeamMember } from '@/components/parametres/team-table'
 import { AddMemberButton } from '@/components/parametres/team-dialogs'
+import { SmsStatus } from '@/components/parametres/sms-status'
 import { CardAction } from '@/components/ui/card'
 import { createAdminClient, hasAdminKey, isArchivedUser } from '@/lib/supabase/admin'
 import { TriangleAlert } from 'lucide-react'
@@ -61,6 +62,16 @@ export default async function ParametresPage() {
               email: settings?.email ?? '',
             }}
           />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Messages aux clients</CardTitle>
+          <CardDescription>Vérifiez la configuration avant de compter dessus en boutique.</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <SmsStatus />
         </CardContent>
       </Card>
 

@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/auth'
 import { ARCHIVED_EMAIL_DOMAIN, createAdminClient, hasAdminKey, isArchivedUser } from '@/lib/supabase/admin'
+import { checkSmsAccount } from '@/lib/sms'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
@@ -227,4 +228,11 @@ export async function deleteStaffMember(userId: string): Promise<{ success: true
   } catch (e) {
     return { success: false, error: authErrorMessage((e as Error).message) }
   }
+}
+
+/** Diagnostic de la configuration SMS : la clé est-elle acceptée par SMS Partner ? */
+export async function testSmsAccount() {
+  const guard = await requireStaff(['ADMIN'])
+  if (!guard.ok) return { success: false as const, error: guard.error, keyLength: 0 }
+  return checkSmsAccount()
 }
