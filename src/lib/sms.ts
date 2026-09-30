@@ -1,21 +1,36 @@
 import { whatsappPhone } from '@/lib/whatsapp'
 
 /**
- * Envoi de SMS via SMS Partner (https://api.smspartner.fr/v1/send).
- * La clé d'API reste côté serveur : SMS_PARTNER_API_KEY.
- * Réglages facultatifs :
- *   SMS_SENDER   nom d'expéditeur affiché (3 à 11 caractères, sans accent ni espace)
- *   SMS_SANDBOX  "1" pour tester sans envoyer ni consommer de crédit
+ * Envoi de SMS via AllMySMS (API REST, https://doc.allmysms.com/api/fr).
+ * Authentification HTTP Basic : base64("login:cléAPI").
+ *
+ * Variables d'environnement (serveur uniquement) :
+ *   ALLMYSMS_LOGIN    identifiant du compte (ex. superhome)
+ *   ALLMYSMS_API_KEY  clé d'API affichée dans le compte
+ *   ALLMYSMS_SENDER   expéditeur affiché, 3 à 11 caractères (facultatif)
+ *   SMS_SANDBOX       "1" pour tester sans envoyer ni débiter
  */
 
+const API = 'https://api.allmysms.com'
+
 export type SmsResult =
-  | { success: true; segments: number; cost: number | null; sandbox: boolean }
+  | { success: true; segments: number; cost: number | null; balance: number | null; sandbox: boolean }
   | { success: false; error: string }
 
-/** Une clé collée depuis le navigateur traîne souvent un espace ou un retour à la ligne. */
-export const smsApiKey = () => process.env.SMS_PARTNER_API_KEY?.trim().replace(/^["']|["']$/g, '') || null
+function credentials() {
+  const login = process.env.ALLMYSMS_LOGIN?.trim()
+  const apiKey = (process.env.ALLMYSMS_API_KEY ?? process.env.SMS_PARTNER_API_KEY)?.trim().replace(/^["']|["']$/g, '')
+  return { login: login || null, apiKey: apiKey || null }
+}
 
-export const hasSmsKey = () => Boolean(smsApiKey())
+export const hasSmsKey = () => {
+  const { login, apiKey } = credentials()
+  return Boolean(login && apiKey)
+}
+
+function authHeader(login: string, apiKey: string) {
+  return `Basic ${Buffer.from(`${login}:${apiKey}`).toString('base64')}`
+}
 
 /** GSM-7 : les caractères typographiques coûtent un SMS de plus, on les remplace. */
 export function smsSafeText(text: string): string {
@@ -47,34 +62,40 @@ export function savReadySms(input: {
   storePhone?: string | null
 }): string {
   const watch = [input.brand, input.model].filter(Boolean).join(' ')
-  const message = [
-    `Bonjour${input.firstName ? ` ${input.firstName}` : ''}, votre montre${watch ? ` ${watch}` : ''} est prete et vous attend en boutique (dossier ${input.caseNumber}).`,
-    `${input.storeName}${input.storePhone ? ` - ${input.storePhone}` : ''}`,
-  ].join(' ')
-  return smsSafeText(message)
+  return smsSafeText(
+    [
+      `Bonjour${input.firstName ? ` ${input.firstName}` : ''}, votre montre${watch ? ` ${watch}` : ''} est prete et vous attend en boutique (dossier ${input.caseNumber}).`,
+      `${input.storeName}${input.storePhone ? ` - ${input.storePhone}` : ''}`,
+    ].join(' ')
+  )
 }
 
-type PartnerResponse = {
-  success?: boolean
+type SendResponse = {
   code?: number
-  nb_sms?: number
+  description?: string
+  nbSms?: number
   cost?: number
-  message?: string
-  errors?: Array<{ message?: string }>
+  balance?: number
+  invalidNumbers?: string
+  smsId?: string
 }
 
-const ERRORS: Record<number, string> = {
-  1: 'Clé d’API manquante côté serveur.',
-  2: 'Numéro de téléphone manquant.',
-  9: 'Message ou numéro refusé par l’opérateur.',
-  10: 'Clé d’API invalide : vérifiez SMS_PARTNER_API_KEY.',
-  11: 'Crédit SMS épuisé : rechargez votre compte SMS Partner.',
+function friendlyError(status: number, data: SendResponse): string {
+  if (status === 401 || status === 403) {
+    return 'Identifiants refusés : vérifiez ALLMYSMS_LOGIN et ALLMYSMS_API_KEY.'
+  }
+  const description = data.description?.trim()
+  if (description && /credit|solde|balance/i.test(description)) {
+    return 'Crédit SMS insuffisant : rechargez votre compte AllMySMS.'
+  }
+  if (data.invalidNumbers) return `Numéro refusé par l’opérateur : ${data.invalidNumbers}`
+  return description ? `AllMySMS : ${description}` : `Envoi refusé par AllMySMS (code HTTP ${status}).`
 }
 
 export async function sendSms(phone: string | null | undefined, message: string): Promise<SmsResult> {
-  const apiKey = smsApiKey()
-  if (!apiKey) {
-    return { success: false, error: 'L’envoi de SMS n’est pas configuré : ajoutez SMS_PARTNER_API_KEY sur le serveur.' }
+  const { login, apiKey } = credentials()
+  if (!login || !apiKey) {
+    return { success: false, error: 'L’envoi de SMS n’est pas configuré : ajoutez ALLMYSMS_LOGIN et ALLMYSMS_API_KEY sur le serveur.' }
   }
 
   const number = whatsappPhone(phone)
@@ -83,21 +104,18 @@ export async function sendSms(phone: string | null | undefined, message: string)
   const text = smsSafeText(message)
   if (!text) return { success: false, error: 'Message vide.' }
 
-  const sender = (process.env.SMS_SENDER ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 11)
+  const sender = (process.env.ALLMYSMS_SENDER ?? process.env.SMS_SENDER ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 11)
   const sandbox = process.env.SMS_SANDBOX === '1'
+  if (sandbox) {
+    return { success: true, segments: smsSegments(text), cost: null, balance: null, sandbox: true }
+  }
 
   let response: Response
   try {
-    response = await fetch('https://api.smspartner.fr/v1/send', {
+    response = await fetch(`${API}/sms/send`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apiKey,
-        phoneNumbers: `+${number}`,
-        message: text,
-        ...(sender.length >= 3 ? { sender } : {}),
-        ...(sandbox ? { sandbox: 1 } : {}),
-      }),
+      headers: { Authorization: authHeader(login, apiKey), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: number, text, ...(sender.length >= 3 ? { from: sender } : {}) }),
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000),
     })
@@ -105,83 +123,87 @@ export async function sendSms(phone: string | null | undefined, message: string)
     return { success: false, error: 'Le service SMS n’a pas répondu. Réessayez dans un instant.' }
   }
 
-  let data: PartnerResponse = {}
+  let data: SendResponse = {}
   try {
-    data = (await response.json()) as PartnerResponse
+    data = (await response.json()) as SendResponse
   } catch {
     return { success: false, error: `Réponse inattendue du service SMS (code ${response.status}).` }
   }
 
-  if (!data.success) {
-    const detail = data.errors?.map((e) => e.message).filter(Boolean).join(' · ')
-    return { success: false, error: ERRORS[data.code ?? 0] ?? detail ?? 'Envoi refusé par le service SMS.' }
+  // 100 = envoyé, 101 = programmé
+  if (!response.ok || ![100, 101].includes(Number(data.code))) {
+    return { success: false, error: friendlyError(response.status, data) }
   }
 
   return {
     success: true,
-    segments: Number(data.nb_sms ?? smsSegments(text)),
+    segments: Number(data.nbSms ?? smsSegments(text)),
     cost: data.cost === undefined ? null : Number(data.cost),
-    sandbox,
+    balance: data.balance === undefined ? null : Number(data.balance),
+    sandbox: false,
   }
 }
 
 export type SmsAccount =
-  | { success: true; balance: number | null; currency: string | null; keyLength: number; keyHint: string; sandbox: boolean }
-  | { success: false; error: string; keyLength: number; keyHint: string }
+  | { success: true; balance: number | null; remaining: number | null; company: string | null; keyHint: string; sandbox: boolean }
+  | { success: false; error: string; keyHint: string }
 
-/** Empreinte lisible d'une clé, pour la comparer sans l'exposer : « 76e…8fb ». */
-function keyHint(key: string | null): string {
+/** Empreinte lisible d'une clé, pour la comparer sans l'exposer : « 79f…055 ». */
+function keyHint(login: string | null, key: string | null): string {
   if (!key) return '—'
-  return key.length <= 8 ? `${key.slice(0, 2)}…${key.slice(-2)}` : `${key.slice(0, 3)}…${key.slice(-3)}`
+  const short = key.length <= 8 ? `${key.slice(0, 2)}…${key.slice(-2)}` : `${key.slice(0, 3)}…${key.slice(-3)}`
+  return login ? `${login} / ${short}` : short
 }
 
-/** Vérifie la clé auprès de SMS Partner (endpoint /v1/me) : aucun SMS envoyé, aucun crédit consommé. */
+/** Vérifie les identifiants auprès d'AllMySMS (/account) : aucun SMS envoyé. */
 export async function checkSmsAccount(): Promise<SmsAccount> {
-  const apiKey = smsApiKey()
-  if (!apiKey) return { success: false, error: 'Aucune clé configurée sur le serveur (SMS_PARTNER_API_KEY).', keyLength: 0, keyHint: '—' }
+  const { login, apiKey } = credentials()
+  const hint = keyHint(login, apiKey)
+  if (!login || !apiKey) {
+    return {
+      success: false,
+      error: !login
+        ? 'Identifiant manquant : ajoutez ALLMYSMS_LOGIN (le login de connexion à AllMySMS).'
+        : 'Clé manquante : ajoutez ALLMYSMS_API_KEY.',
+      keyHint: hint,
+    }
+  }
 
   let response: Response
   try {
-    response = await fetch(`https://api.smspartner.fr/v1/me?apiKey=${encodeURIComponent(apiKey)}&_format=json`, {
+    response = await fetch(`${API}/account`, {
+      headers: { Authorization: authHeader(login, apiKey) },
       cache: 'no-store',
       signal: AbortSignal.timeout(15_000),
     })
   } catch {
-    return { success: false, error: 'Le service SMS n’a pas répondu.', keyLength: apiKey.length, keyHint: keyHint(apiKey) }
+    return { success: false, error: 'Le service SMS n’a pas répondu.', keyHint: hint }
   }
 
-  let data: {
-    success?: boolean
-    code?: number
-    credits?: number | string | null
-    solde?: number | string | null
-    balance?: number | string | null
-    currency?: string
-    message?: string
-    user?: { email?: string } | null
-  } = {}
+  let data: { balance?: number; nbSms?: number; company?: string; description?: string; code?: string } = {}
   try {
     data = await response.json()
   } catch {
-    return { success: false, error: `Réponse inattendue (code HTTP ${response.status}).`, keyLength: apiKey.length, keyHint: keyHint(apiKey) }
+    return { success: false, error: `Réponse inattendue (code HTTP ${response.status}).`, keyHint: hint }
   }
 
-  if (!data.success) {
+  if (!response.ok) {
     return {
       success: false,
-      error: data.message ?? ERRORS[data.code ?? 0] ?? 'Clé refusée par SMS Partner.',
-      keyLength: apiKey.length,
-      keyHint: keyHint(apiKey),
+      error:
+        response.status === 401 || response.status === 403
+          ? 'Identifiants refusés par AllMySMS : vérifiez le login et la clé d’API.'
+          : data.description ?? `AllMySMS a répondu ${response.status}.`,
+      keyHint: hint,
     }
   }
 
-  const balance = data.credits ?? data.solde ?? data.balance
   return {
     success: true,
-    balance: balance === undefined || balance === null ? null : Number(balance),
-    currency: data.currency ?? 'EUR',
-    keyLength: apiKey.length,
-    keyHint: keyHint(apiKey),
+    balance: data.balance === undefined ? null : Number(data.balance),
+    remaining: data.nbSms === undefined ? null : Number(data.nbSms),
+    company: data.company ?? null,
+    keyHint: hint,
     sandbox: process.env.SMS_SANDBOX === '1',
   }
 }
