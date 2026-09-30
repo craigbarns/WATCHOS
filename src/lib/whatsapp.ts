@@ -16,6 +16,27 @@ export function whatsappLink(phone: string | null | undefined, message: string):
   return number ? `https://wa.me/${number}?text=${encodeURIComponent(message)}` : null
 }
 
+export type WhatsappTargets = {
+  /** Téléphone : ouvre l'application WhatsApp directement. */
+  mobile: string
+  /** Ordinateur : va droit à la conversation dans WhatsApp Web, sans page intermédiaire. */
+  web: string
+  /** Ordinateur : ouvre l'application WhatsApp installée. */
+  app: string
+}
+
+/** Liens directs par plateforme : évite la page « Ouvrir l'application ou WhatsApp Web » de wa.me. */
+export function whatsappTargets(phone: string | null | undefined, message: string): WhatsappTargets | null {
+  const number = whatsappPhone(phone)
+  if (!number) return null
+  const text = encodeURIComponent(message)
+  return {
+    mobile: `https://wa.me/${number}?text=${text}`,
+    web: `https://web.whatsapp.com/send?phone=${number}&text=${text}`,
+    app: `whatsapp://send?phone=${number}&text=${text}`,
+  }
+}
+
 export function savReadyMessage(input: {
   firstName: string | null; caseNumber: string; brand: string | null; model: string | null
   storeName: string; address?: string | null; storePhone?: string | null
