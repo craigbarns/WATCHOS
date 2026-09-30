@@ -14,6 +14,8 @@ import { formatDate, formatDateTime, parisDay, SAV_CLOSED_STATUSES, SAV_STATUS }
 import { cn } from '@/lib/utils'
 import { SavWhatsApp } from '@/components/sav/sav-whatsapp'
 import { savReadyMessage } from '@/lib/whatsapp'
+import { savReadySms } from '@/lib/sms'
+import { smsConfigured } from '@/app/actions/sav'
 
 type SavCaseDetail = Omit<DepositSlipData, 'store'> & {
   sale_id?: string | null
@@ -58,6 +60,7 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
   const { data: sale } = c.sale_id
     ? await supabase.from('sales').select('id, receipt_number, finalized_at').eq('id', c.sale_id).maybeSingle()
     : { data: null }
+  const smsReady = await smsConfigured()
   const timeline = (events ?? []) as unknown as SavEvent[]
   const technicians = [...(team ?? [])].sort((a, b) => Number(b.role === 'TECHNICIEN') - Number(a.role === 'TECHNICIEN'))
   const status = SAV_STATUS[c.status]
@@ -111,7 +114,15 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
             <Card>
               <CardHeader><CardTitle>Prévenir le client</CardTitle><CardDescription>Votre montre est prête : préparez le message de retrait.</CardDescription></CardHeader>
               <CardContent>
-                <SavWhatsApp key={`${c.id}-${c.status}`} id={c.id} status={c.status} phone={c.customer?.phone ?? null} message={savReadyMessage({ firstName: c.customer?.first_name ?? null, caseNumber: c.case_number, brand: c.brand, model: c.model, storeName: store?.store_name ?? 'Heures et Passion', address: store?.address, storePhone: store?.phone })} />
+                <SavWhatsApp
+                  key={`${c.id}-${c.status}`}
+                  id={c.id}
+                  status={c.status}
+                  phone={c.customer?.phone ?? null}
+                  message={savReadyMessage({ firstName: c.customer?.first_name ?? null, caseNumber: c.case_number, brand: c.brand, model: c.model, storeName: store?.store_name ?? 'Heures et Passion', address: store?.address, storePhone: store?.phone })}
+                  smsReady={smsReady}
+                  smsMessage={savReadySms({ firstName: c.customer?.first_name ?? null, caseNumber: c.case_number, brand: c.brand, model: c.model, storeName: store?.store_name ?? 'Heures et Passion', storePhone: store?.phone })}
+                />
               </CardContent>
             </Card>
           )}

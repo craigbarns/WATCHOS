@@ -6,6 +6,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { SAV_STATUS } from '@/lib/format'
 import { whatsappPhone } from '@/lib/whatsapp'
+import { hasSmsKey, savReadySms, sendSms } from '@/lib/sms'
 import { savPaymentSchema, type SavPaymentInput } from '@/lib/sav-payment'
 
 type Result<T = object> = ({ success: true } & T) | { success: false; error: string }
@@ -281,4 +282,74 @@ export async function checkoutSav(
   revalidatePath('/rapports/ventes')
 
   return { success: true, saleId: data.sale_id, receiptNumber: data.receipt_number, replayed: data.replayed }
+}
+
+// ---------------------------------------------------------------------
+// Prévenir le client par SMS (SMS Partner)
+// ---------------------------------------------------------------------
+
+export type SavSmsResult =
+  | { success: true; segments: number; cost: number | null; sandbox: boolean }
+  | { success: false; error: string }
+
+export async function sendSavSms(id: string): Promise<SavSmsResult> {
+  const guard = await requireStaff()
+  if (!guard.ok) return { success: false, error: guard.error }
+  if (!z.guid().safeParse(id).success) return { success: false, error: 'Dossier invalide.' }
+
+  const supabase = await createClient()
+  const [{ data: sav }, { data: store }] = await Promise.all([
+    supabase
+      .from('sav_cases')
+      .select('case_number, brand, model, status, customer:customers(first_name, phone)')
+      .eq('id', id)
+      .maybeSingle(),
+    supabase.from('settings').select('store_name, phone').limit(1).maybeSingle(),
+  ])
+  if (!sav) return { success: false, error: 'Dossier introuvable.' }
+
+  const c = sav as unknown as {
+    case_number: string
+    brand: string | null
+    model: string | null
+    status: string
+    customer: { first_name: string; phone: string | null } | null
+  }
+
+  const message = savReadySms({
+    firstName: c.customer?.first_name ?? null,
+    caseNumber: c.case_number,
+    brand: c.brand,
+    model: c.model,
+    storeName: store?.store_name ?? 'Heures et Passion',
+    storePhone: store?.phone,
+  })
+
+  const result = await sendSms(c.customer?.phone, message)
+  if (!result.success) return result
+
+  await supabase.from('sav_events').insert({
+    sav_case_id: id,
+    event_type: 'SMS',
+    description: result.sandbox
+      ? `SMS de test (mode bac à sable, non envoyé) : ${message}`
+      : `SMS envoyé au ${c.customer?.phone} : ${message}`,
+    user_id: guard.profile.id,
+  })
+
+  // La montre est prête et le client vient d'être prévenu
+  if (c.status === 'PRET' && !result.sandbox) {
+    await supabase.from('sav_cases').update({ status: 'CLIENT_PREVENU', updated_at: new Date().toISOString() }).eq('id', id)
+  }
+
+  revalidatePath(`/sav/${id}`)
+  revalidatePath('/sav')
+  revalidatePath('/dashboard')
+  return result
+}
+
+/** Le serveur sait-il envoyer des SMS ? (clé d'API présente) */
+export async function smsConfigured(): Promise<boolean> {
+  const guard = await requireStaff()
+  return guard.ok && hasSmsKey()
 }

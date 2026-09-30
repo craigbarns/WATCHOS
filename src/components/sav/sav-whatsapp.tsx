@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useSyncExternalStore, useTransition } from 'react'
-import { Check, Copy, MessageCircle, Monitor, Smartphone } from 'lucide-react'
+import { Check, Copy, MessageCircle, Monitor, Send, Smartphone } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { confirmSavWhatsApp, updateSavCustomerPhone } from '@/app/actions/sav'
+import { confirmSavWhatsApp, sendSavSms, updateSavCustomerPhone } from '@/app/actions/sav'
 import { whatsappTargets } from '@/lib/whatsapp'
 
 /** Vrai sur ordinateur : on y propose WhatsApp Web ou l'application installée. */
@@ -20,7 +20,25 @@ function useIsDesktop() {
   )
 }
 
-export function SavWhatsApp({ id, status, phone, message }: { id: string; status: string; phone: string | null; message: string }) {
+export function SavWhatsApp({
+  id,
+  status,
+  phone,
+  message,
+  smsReady = false,
+  smsMessage,
+}: {
+  id: string
+  status: string
+  phone: string | null
+  message: string
+  /** Vrai si la clé d'API SMS est configurée sur le serveur */
+  smsReady?: boolean
+  smsMessage?: string
+}) {
+  const [smsSent, setSmsSent] = useState<string | null>(null)
+  const [smsError, setSmsError] = useState<string | null>(null)
+  const [sendingSms, startSms] = useTransition()
   const [opened, setOpened] = useState(false)
   const [copied, setCopied] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,6 +86,21 @@ export function SavWhatsApp({ id, status, phone, message }: { id: string; status
     }
   }
 
+  const sendSms = () =>
+    startSms(async () => {
+      setSmsError(null)
+      const result = await sendSavSms(id)
+      if (!result.success) {
+        setSmsError(result.error)
+        return
+      }
+      setSmsSent(
+        result.sandbox
+          ? 'Mode test : le SMS n’a pas été envoyé et rien n’a été débité.'
+          : `SMS envoyé${result.cost !== null ? ` (${result.cost.toFixed(3).replace('.', ',')} €)` : ''}.`
+      )
+    })
+
   const linkClass =
     'inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800'
 
@@ -96,6 +129,30 @@ export function SavWhatsApp({ id, status, phone, message }: { id: string; status
               {copied ? <Check /> : <Copy />} {copied ? 'Message copié' : 'Copier le message'}
             </Button>
           </div>
+
+          {smsReady && (
+            <div className="rounded-lg border p-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-medium">Envoyer un SMS à la place</span>
+                <Button type="button" variant="outline" className="min-h-10" disabled={sendingSms || smsSent !== null} onClick={sendSms}>
+                  {smsSent ? <Check /> : <Send />} {sendingSms ? 'Envoi…' : smsSent ? 'SMS envoyé' : 'Envoyer le SMS'}
+                </Button>
+              </div>
+              {smsMessage && !smsSent && (
+                <p className="mt-2 rounded bg-muted/60 p-2 text-xs leading-relaxed">{smsMessage}</p>
+              )}
+              <p className="mt-2 text-xs text-muted-foreground">
+                Départ immédiat vers {phone}, sans rien faire d’autre. Environ 5 centimes par SMS, débités de votre crédit
+                SMS Partner.
+              </p>
+              {smsSent && <p className="mt-2 text-sm text-emerald-700">{smsSent}</p>}
+              {smsError && (
+                <p role="alert" className="mt-2 text-sm text-destructive">
+                  {smsError}
+                </p>
+              )}
+            </div>
+          )}
 
           <p className="text-xs text-muted-foreground">
             {isDesktop
