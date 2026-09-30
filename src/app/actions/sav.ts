@@ -213,3 +213,72 @@ export async function updateSavDetails(input: z.input<typeof detailsSchema>): Pr
   revalidatePath('/sav')
   return { success: true }
 }
+
+// ---------------------------------------------------------------------
+// Encaissement d'un dossier SAV : crée une vraie vente et son ticket
+// ---------------------------------------------------------------------
+
+export type ServiceOption = { id: string; label: string }
+
+export async function listServices(): Promise<ServiceOption[]> {
+  const guard = await requireStaff(['ADMIN', 'VENDEUR'])
+  if (!guard.ok) return []
+  const supabase = await createClient()
+  const { data } = await supabase.from('service_categories').select('id, label').eq('active', true).order('sort_order')
+  return data ?? []
+}
+
+const checkoutSchema = z.object({
+  id: z.guid(),
+  serviceId: z.guid({ message: 'Choisissez la prestation.' }),
+  amount: z.number().positive('Saisissez un montant supérieur à 0.').max(999999.99),
+  payments: z
+    .array(z.object({ method: z.enum(['CB', 'ESPÈCES', 'VIREMENT', 'CHÈQUE', 'AUTRE']), amount: z.number().positive() }))
+    .min(1, 'Ajoutez au moins un règlement.'),
+  idempotencyKey: z.string().min(8),
+})
+
+export type SavCheckoutInput = z.input<typeof checkoutSchema>
+
+export async function checkoutSav(
+  input: SavCheckoutInput
+): Promise<{ success: true; saleId: string; receiptNumber: string; replayed?: boolean } | { success: false; error: string }> {
+  const guard = await requireStaff(['ADMIN', 'VENDEUR'])
+  if (!guard.ok) return { success: false, error: guard.error }
+
+  const parsed = checkoutSchema.safeParse(input)
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Données invalides.' }
+
+  const cents = (v: number) => Math.round(v * 100)
+  const total = parsed.data.payments.reduce((sum, p) => sum + cents(p.amount), 0)
+  if (total !== cents(parsed.data.amount)) {
+    return { success: false, error: 'Le total des règlements doit être égal au montant du SAV.' }
+  }
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('checkout_sav', {
+    p_id: parsed.data.id,
+    p_service_id: parsed.data.serviceId,
+    p_amount_ttc: parsed.data.amount,
+    p_payments: parsed.data.payments,
+    p_idempotency_key: parsed.data.idempotencyKey,
+  })
+
+  if (error) {
+    return {
+      success: false,
+      error:
+        error.code === 'PGRST202'
+          ? 'L’encaissement des SAV doit d’abord être activé en base (migration 20260924000000_sav_checkout.sql).'
+          : error.message,
+    }
+  }
+
+  revalidatePath(`/sav/${parsed.data.id}`)
+  revalidatePath('/sav')
+  revalidatePath('/dashboard')
+  revalidatePath('/rapports')
+  revalidatePath('/rapports/ventes')
+
+  return { success: true, saleId: data.sale_id, receiptNumber: data.receipt_number, replayed: data.replayed }
+}

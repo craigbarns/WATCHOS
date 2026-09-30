@@ -3,9 +3,12 @@ import { notFound } from 'next/navigation'
 import { ArrowLeft, Box, Clock, Mail, Phone } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/server'
+import { getCurrentProfile } from '@/lib/auth'
 import { SavStatusPanel } from '@/components/sav/sav-status-panel'
 import { SavDetailsForm } from '@/components/sav/sav-details-form'
 import { SavPaymentForm } from '@/components/sav/sav-payment-form'
+import { SavCheckoutButton } from '@/components/sav/sav-checkout-dialog'
+import { ReprintButton } from '@/components/caisse/receipt-dialog'
 import { SavDepositSlipButton, type DepositSlipData } from '@/components/sav/sav-deposit-slip'
 import { formatDate, formatDateTime, parisDay, SAV_CLOSED_STATUSES, SAV_STATUS } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -13,6 +16,7 @@ import { SavWhatsApp } from '@/components/sav/sav-whatsapp'
 import { savReadyMessage } from '@/lib/whatsapp'
 
 type SavCaseDetail = Omit<DepositSlipData, 'store'> & {
+  sale_id?: string | null
   id: string
   status: string
   diagnostic: string | null
@@ -48,6 +52,12 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
   if (!sav) notFound()
 
   const c = sav as unknown as SavCaseDetail
+  const profile = await getCurrentProfile()
+  const canSell = profile?.role === 'ADMIN' || profile?.role === 'VENDEUR'
+  // Vente liée : la colonne sale_id arrive avec la migration 20260924000000_sav_checkout.sql
+  const { data: sale } = c.sale_id
+    ? await supabase.from('sales').select('id, receipt_number, finalized_at').eq('id', c.sale_id).maybeSingle()
+    : { data: null }
   const timeline = (events ?? []) as unknown as SavEvent[]
   const technicians = [...(team ?? [])].sort((a, b) => Number(b.role === 'TECHNICIEN') - Number(a.role === 'TECHNICIEN'))
   const status = SAV_STATUS[c.status]
@@ -168,7 +178,20 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
               <CardTitle>Règlement</CardTitle>
               <CardDescription>Montant convenu et suivi du paiement.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {sale ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-emerald-50 p-3 text-sm dark:bg-emerald-950/30">
+                  <div>
+                    <div className="font-medium text-emerald-800 dark:text-emerald-300">Encaissé en caisse</div>
+                    <div className="text-muted-foreground">
+                      Ticket <span className="font-mono">{sale.receipt_number}</span> · {formatDateTime(sale.finalized_at)}
+                    </div>
+                  </div>
+                  <ReprintButton saleId={sale.id} label="Ticket" />
+                </div>
+              ) : (
+                canSell && <SavCheckoutButton caseId={c.id} caseNumber={c.case_number} amountDue={c.amount_due == null ? null : Number(c.amount_due)} />
+              )}
               <SavPaymentForm
                 key={`${c.id}|${c.amount_due}|${c.is_paid}`}
                 id={c.id}
