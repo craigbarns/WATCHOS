@@ -86,13 +86,9 @@ function DepositSlip({ data }: { data: DepositSlipData }) {
 
       <div className="my-2 border-y-2 border-black py-1 text-center text-sm font-bold tracking-[0.2em]">BON DE DÉPÔT</div>
 
-      <div className="flex justify-between font-semibold">
-        <span>Dossier</span>
-        <span>{data.case_number}</span>
-      </div>
-      <div className="flex justify-between">
-        <span>Déposée le</span>
-        <span>{formatDateTime(data.deposit_date)}</span>
+      <div className="text-center">
+        <div className="text-base font-bold">{data.case_number}</div>
+        <div>Déposée le {formatDateTime(data.deposit_date)}</div>
       </div>
 
       <div className="my-2 border-t border-dashed border-black" />

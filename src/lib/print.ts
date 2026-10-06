@@ -1,5 +1,7 @@
 /** Largeur imprimable d'un rouleau thermique 80 mm (la tête n'imprime pas jusqu'aux bords). */
-const PRINTABLE_WIDTH = '72mm'
+const PRINTABLE_WIDTH = '70mm'
+/** Les têtes thermiques n'impriment pas jusqu'aux bords : on garde une marge de sécurité. */
+const MARGES = '8mm 3mm 12mm'
 
 /**
  * Imprime un élément seul, dans une iframe isolée au format ticket 80 mm.
@@ -36,7 +38,9 @@ ${styles}
   body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .print-root { width: ${PRINTABLE_WIDTH}; margin: 0 auto; }
   .print-root, .print-root * { color: #000 !important; border-color: #000 !important; }
-  .print-root .print-area { max-width: none !important; width: 100% !important; padding: 2mm 0 6mm !important; }
+  .print-root .print-area { max-width: none !important; width: 100% !important; padding: ${MARGES} !important; }
+  /* Rien ne doit déborder de la largeur du rouleau */
+  .print-root * { overflow-wrap: anywhere; }
 </style>
 </head>
 <body><div class="print-root">${element.outerHTML}</div></body>
