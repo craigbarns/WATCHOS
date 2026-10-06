@@ -34,18 +34,28 @@ const FILTERS = [
   { value: 'ALL', label: 'Tous' },
 ] as const
 
+const PAGE = 1000
+
 async function loadSav() {
   const supabase = createClient()
-  const [{ data: cases, error: casesError }, { data: technicians, error: techniciansError }] = await Promise.all([
-    supabase
+  // L'API renvoie 1 000 lignes au maximum : on parcourt les pages, sinon les
+  // dossiers les plus anciens disparaissent silencieusement de la liste.
+  const cases: SavCase[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
       .from('sav_cases')
       .select('id, case_number, brand, model, serial_number, status, deposit_date, estimated_date, customer:customers(first_name, last_name, phone), technician:profiles(full_name)')
-      .order('created_at', { ascending: false }),
-    supabase.from('profiles').select('id, full_name, role').eq('active', true).order('full_name'),
-  ])
-  if (casesError || techniciansError) throw new Error('Chargement du SAV impossible')
+      .order('created_at', { ascending: false })
+      .range(from, from + PAGE - 1)
+    if (error) throw new Error('Chargement du SAV impossible')
+    cases.push(...((data ?? []) as unknown as SavCase[]))
+    if (!data || data.length < PAGE) break
+  }
+  const { data: technicians, error: techniciansError } = await supabase
+    .from('profiles').select('id, full_name, role').eq('active', true).order('full_name')
+  if (techniciansError) throw new Error('Chargement du SAV impossible')
   return {
-    cases: (cases ?? []) as unknown as SavCase[],
+    cases,
     // Techniciens en premier, puis le reste de l'équipe (petites boutiques : le gérant répare aussi)
     technicians: [...(technicians ?? [])].sort((a, b) => Number(b.role === 'TECHNICIEN') - Number(a.role === 'TECHNICIEN')) as Technician[],
   }

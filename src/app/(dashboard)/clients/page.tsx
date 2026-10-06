@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { LoadError } from '@/components/shared/load-error'
 import { useRemoteData } from '@/lib/use-remote-data'
 import { createClient } from '@/lib/supabase/client'
@@ -21,30 +21,60 @@ type Customer = {
   created_at: string
 }
 
-async function loadClients(): Promise<Customer[]> {
-  const { data, error } = await createClient()
+const LIMITE = 200
+
+/** Nettoie une saisie pour un filtre PostgREST (virgules et parenthèses interdites). */
+const nettoie = (terme: string) => terme.replace(/[,()*%\\]/g, ' ').trim()
+
+type Resultat = { clients: Customer[]; total: number; tronque: boolean }
+
+/**
+ * Recherche côté serveur : la base compte des milliers de clients et l'API
+ * ne renvoie que 1 000 lignes par appel. On ne charge donc jamais tout.
+ */
+async function chercherClients(terme: string): Promise<Resultat> {
+  const supabase = createClient()
+  const t = nettoie(terme)
+  let query = supabase
     .from('customers')
-    .select('id, first_name, last_name, email, phone, city, created_at')
+    .select('id, first_name, last_name, email, phone, city, created_at', { count: 'exact' })
     .order('created_at', { ascending: false })
+    .limit(LIMITE)
+  if (t.length >= 2) {
+    query = query.or(
+      `first_name.ilike.%${t}%,last_name.ilike.%${t}%,email.ilike.%${t}%,phone.ilike.%${t}%,city.ilike.%${t}%`
+    )
+  }
+  const { data, error, count } = await query
   if (error) throw new Error(error.message)
-  return data ?? []
+  const clients = data ?? []
+  return { clients, total: count ?? clients.length, tronque: (count ?? 0) > clients.length }
 }
 
 export default function ClientsPage() {
   const [search, setSearch] = useState('')
-  const { data: clients, loading, error, refresh: fetchClients } = useRemoteData(loadClients, [])
+  const [terme, setTerme] = useState('')
   const [dialogOpen, setDialogOpen] = useState(false)
 
-  const filteredClients = clients.filter(c => 
-    `${c.first_name} ${c.last_name} ${c.email ?? ''} ${c.phone ?? ''} ${c.city ?? ''}`.toLowerCase().includes(search.toLowerCase())
-  )
+  // La frappe ne déclenche une requête qu'après une courte pause
+  useEffect(() => {
+    const t = setTimeout(() => setTerme(search), 250)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const chercher = useCallback(() => chercherClients(terme), [terme])
+  const { data, loading, error, refresh: fetchClients } = useRemoteData(chercher, { clients: [], total: 0, tronque: false })
+  const filteredClients = data.clients
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
         <div>
           <h1 className="font-playfair text-2xl font-bold tracking-tight sm:text-3xl">Clients</h1>
-          <p className="text-sm text-muted-foreground">{clients.length} client(s)</p>
+          <p className="text-sm text-muted-foreground">
+            {data.total.toLocaleString('fr-FR')} client(s)
+            {data.tronque && ` · ${filteredClients.length} affichés`}
+          </p>
         </div>
         <Button onClick={() => setDialogOpen(true)} className="h-10 sm:h-9">
           <Plus /> <span className="max-sm:hidden">Nouveau client</span>
@@ -67,6 +97,11 @@ export default function ClientsPage() {
             />
           </div>
         </CardHeader>
+        {data.tronque && !loading && (
+          <p className="border-b px-4 py-2 text-xs text-muted-foreground">
+            Les {filteredClients.length} clients les plus récents sont affichés. Utilisez la recherche pour retrouver les autres.
+          </p>
+        )}
         <CardContent className="p-0">
           <ul className="divide-y md:hidden">
             {loading ? (
