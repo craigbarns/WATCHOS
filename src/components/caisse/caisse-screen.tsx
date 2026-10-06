@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
   Search, UserPlus, ShoppingCart, Trash2, CreditCard, Banknote, Landmark, FileSignature, CircleDollarSign,
-  Minus, Plus, X, Percent, User, Loader2, Wrench, Pencil,
+  Minus, Plus, X, Percent, User, Loader2, Wrench, Pencil, ShieldCheck,
 } from 'lucide-react'
 import {
   finalizeSale, searchCatalog, searchCustomers,
@@ -91,6 +91,7 @@ export function CaisseScreen({
   const [processing, startProcessing] = useTransition()
   const idempotencyKey = useRef<string>('')
   const checkoutPending = useRef(false)
+  const [warranty, setWarranty] = useState(false)
 
   // --- Client
   const [customerQuery, setCustomerQuery] = useState('')
@@ -194,6 +195,7 @@ export function CaisseScreen({
 
   const resetSale = () => {
     setCart([])
+    setWarranty(false)
     setPayments([])
     setCashReceived(null)
     setAmountInput('')
@@ -218,7 +220,8 @@ export function CaisseScreen({
             discount_amount: l.discount,
           })),
           payments,
-          idempotencyKey.current
+          idempotencyKey.current,
+          warranty
         )
         if (!result.success) {
           setError(result.error)
@@ -550,6 +553,23 @@ export function CaisseScreen({
                 className="h-10 text-right text-lg tabular-nums"
               />
             </div>
+
+            <label
+              className={cn(
+                'flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border px-3 text-sm transition-colors',
+                warranty ? 'border-primary bg-primary/5 font-medium' : 'hover:bg-muted'
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={warranty}
+                onChange={(e) => setWarranty(e.target.checked)}
+                className="size-4 accent-primary"
+              />
+              <ShieldCheck className="size-4 text-muted-foreground" />
+              Garantie 1 an
+              <span className="ml-auto text-xs text-muted-foreground">imprimée sur le ticket</span>
+            </label>
 
             <div className="grid grid-cols-2 gap-2">
               {PAYMENT_BUTTONS.map(({ method, icon: Icon }) => (

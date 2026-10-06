@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useTransition } from 'react'
-import { Banknote, CreditCard, CircleDollarSign, FileSignature, Landmark, Receipt, X } from 'lucide-react'
+import { Banknote, CreditCard, CircleDollarSign, FileSignature, Landmark, Receipt, ShieldCheck, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
@@ -86,6 +86,7 @@ function CheckoutForm({
   const [serviceId, setServiceId] = useState('')
   const [amountInput, setAmountInput] = useState(amountDue === null ? '' : amountDue.toFixed(2).replace('.', ','))
   const [payments, setPayments] = useState<Array<{ method: Method; amount: number }>>([])
+  const [warranty, setWarranty] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
@@ -123,7 +124,7 @@ function CheckoutForm({
       return
     }
     startTransition(async () => {
-      const result = await checkoutSav({ id: caseId, serviceId, amount, payments, idempotencyKey: crypto.randomUUID() })
+      const result = await checkoutSav({ id: caseId, serviceId, amount, payments, warranty, idempotencyKey: crypto.randomUUID() })
       if (!result.success) {
         setError(result.error)
         return
@@ -176,6 +177,18 @@ function CheckoutForm({
           className="h-11 text-right text-lg tabular-nums"
         />
       </div>
+
+      <label
+        className={cn(
+          'flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border px-3 text-sm transition-colors',
+          warranty ? 'border-primary bg-primary/5 font-medium' : 'hover:bg-muted'
+        )}
+      >
+        <input type="checkbox" checked={warranty} onChange={(e) => setWarranty(e.target.checked)} className="size-4 accent-primary" />
+        <ShieldCheck className="size-4 text-muted-foreground" />
+        Garantie 1 an sur l&apos;intervention
+        <span className="ml-auto text-xs text-muted-foreground">imprimée sur le ticket</span>
+      </label>
 
       <div className="grid gap-2">
         <span className="text-sm font-medium">Règlement</span>

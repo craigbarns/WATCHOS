@@ -2,6 +2,13 @@ import type { ReceiptData } from '@/app/actions/caisse'
 import { formatDateAndTime, formatEuro, PAYMENT_LABELS } from '@/lib/format'
 
 /** Ticket de caisse pour imprimante thermique (80 / 58 mm), imprimé via printElement. */
+/** Date de fin de garantie, à partir de la date d'achat. */
+function finDeGarantie(achat: string, mois: number): string {
+  const d = new Date(achat)
+  d.setMonth(d.getMonth() + mois)
+  return formatDateAndTime(d).date
+}
+
 export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; duplicate?: boolean }) {
   const purchase = formatDateAndTime(receipt.finalized_at)
   const reprint = duplicate ? formatDateAndTime() : null
@@ -119,6 +126,19 @@ export function Receipt({ receipt, duplicate = false }: { receipt: ReceiptData; 
           <span>{formatEuro(p.amount)}</span>
         </div>
       ))}
+
+      {receipt.warranty_months && !receipt.is_refund && (
+        <>
+          <div className="my-2 border-t border-dashed border-black" />
+          <div className="border border-black py-1 text-center">
+            <div className="text-sm font-bold tracking-[0.15em]">
+              GARANTIE {receipt.warranty_months === 12 ? '1 AN' : `${receipt.warranty_months} MOIS`}
+            </div>
+            <div className="text-[10px]">Valable jusqu&apos;au {finDeGarantie(receipt.finalized_at, receipt.warranty_months)}</div>
+            <div className="text-[9px]">Présentez ce ticket pour toute prise en charge.</div>
+          </div>
+        </>
+      )}
 
       <div className="my-2 border-t border-dashed border-black" />
       <div className="text-center text-[9px] break-all">

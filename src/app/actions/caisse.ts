@@ -96,11 +96,25 @@ export type FinalizeSaleResult =
   | { success: true; data: { sale_id: string; receipt_number: string; hash?: string; total_ttc?: number } }
   | { success: false; error: string }
 
+/** Enregistre la garantie à part : la vente et la chaîne fiscale restent intactes. */
+export async function addWarranty(saleId: string, months = 12): Promise<boolean> {
+  const guard = await requireStaff(['ADMIN', 'VENDEUR'])
+  if (!guard.ok) return false
+  const supabase = await createClient()
+  const { error } = await supabase.from('sale_warranties').insert({ sale_id: saleId, months, created_by: guard.profile.id })
+  if (error && error.code !== '23505') {
+    console.error('Warranty error:', error.message)
+    return false
+  }
+  return true
+}
+
 export async function finalizeSale(
   customerId: string | null,
   lines: SaleLineInput[],
   payments: PaymentInput[],
-  idempotencyKey: string
+  idempotencyKey: string,
+  warranty = false
 ): Promise<FinalizeSaleResult> {
   const guard = await requireStaff(['ADMIN', 'VENDEUR'])
   if (!guard.ok) return { success: false, error: guard.error }
@@ -125,6 +139,8 @@ export async function finalizeSale(
     return { success: false, error: error.message }
   }
 
+  if (warranty && data?.sale_id && !data?.replayed) await addWarranty(data.sale_id)
+
   revalidatePath('/caisse')
   revalidatePath('/dashboard')
   revalidatePath('/stock')
@@ -136,6 +152,8 @@ export async function finalizeSale(
 
 export type ReceiptData = {
   receipt_number: string
+  /** Durée de garantie en mois, si elle a été accordée */
+  warranty_months: number | null
   /** Vrai pour un avoir (annulation) : montants négatifs */
   is_refund: boolean
   /** Ticket annulé par cet avoir */
@@ -170,10 +188,14 @@ export async function getReceipt(saleId: string): Promise<ReceiptData | null> {
     return supabase.from('sales').select(SALE_COLUMNS).eq('id', saleId).maybeSingle()
   }
 
-  const [{ data: sale }, { data: store }, { data: event }] = await Promise.all([
+  // La table des garanties arrive avec la migration 20260925000000_warranty.sql
+  const warrantyQuery = supabase.from('sale_warranties').select('months').eq('sale_id', saleId).maybeSingle()
+
+  const [{ data: sale }, { data: store }, { data: event }, warranty] = await Promise.all([
     saleQuery(),
     supabase.from('settings').select('store_name, company_name, address, siret, vat_number, phone').limit(1).maybeSingle(),
     supabase.from('fiscal_events').select('current_hash, sequence_number').eq('entity_id', saleId).maybeSingle(),
+    warrantyQuery,
   ])
   if (!sale) return null
 
@@ -222,6 +244,7 @@ export async function getReceipt(saleId: string): Promise<ReceiptData | null> {
     total_ht: Number(s.total_ht),
     total_vat: Number(s.total_vat),
     total_ttc: Number(s.total_ttc),
+    warranty_months: warranty.error ? null : warranty.data?.months ?? null,
     hash: event?.current_hash ?? null,
     sequence_number: event?.sequence_number ?? null,
     seller: s.seller?.full_name ?? null,

@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/auth'
+import { addWarranty } from '@/app/actions/caisse'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { SAV_STATUS } from '@/lib/format'
@@ -237,6 +238,7 @@ const checkoutSchema = z.object({
     .array(z.object({ method: z.enum(['CB', 'ESPÈCES', 'VIREMENT', 'CHÈQUE', 'AUTRE']), amount: z.number().positive() }))
     .min(1, 'Ajoutez au moins un règlement.'),
   idempotencyKey: z.string().min(8),
+  warranty: z.boolean().optional(),
 })
 
 export type SavCheckoutInput = z.input<typeof checkoutSchema>
@@ -274,6 +276,8 @@ export async function checkoutSav(
           : error.message,
     }
   }
+
+  if (parsed.data.warranty && data.sale_id && !data.replayed) await addWarranty(data.sale_id)
 
   revalidatePath(`/sav/${parsed.data.id}`)
   revalidatePath('/sav')
