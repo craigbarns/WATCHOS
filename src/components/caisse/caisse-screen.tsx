@@ -31,6 +31,9 @@ const PAYMENT_BUTTONS: Array<{ method: PaymentMethod; icon: typeof CreditCard }>
 
 const cents = (v: number) => Math.round(v * 100) / 100
 
+/** Montant saisi : « 8 », « 8,5 » ou « 8.50 », deux décimales au plus */
+const AMOUNT_PATTERN = /^\d+(?:[.,]\d{1,2})?$/
+
 function parseAmount(raw: string): number {
   const n = Number(raw.replace(/\s/g, '').replace(',', '.'))
   return Number.isFinite(n) ? cents(n) : 0
@@ -80,7 +83,7 @@ export function CaisseScreen({
   const [selectedService, setSelectedService] = useState<CatalogItem | null>(null)
   const [serviceAmount, setServiceAmount] = useState('')
   const [editingKey, setEditingKey] = useState<string | null>(null)
-  const validServiceAmount = /^\d+(?:[.,]\d{1,2})?$/.test(serviceAmount.trim()) && parseAmount(serviceAmount) > 0 && parseAmount(serviceAmount) <= 999999.99
+  const validServiceAmount = AMOUNT_PATTERN.test(serviceAmount.trim()) && parseAmount(serviceAmount) > 0 && parseAmount(serviceAmount) <= 999999.99
 
   // --- Vente
   const [cart, setCart] = useState<CartLine[]>(initialCart)
@@ -102,6 +105,26 @@ export function CaisseScreen({
 
   // --- Ticket
   const [lastSaleId, setLastSaleId] = useState<string | null>(null)
+
+  // --- Remise : en € ou en %, jamais supérieure au prix de la ligne
+  const [discountKey, setDiscountKey] = useState<string | null>(null)
+  const [discountMode, setDiscountMode] = useState<'EUR' | 'PCT'>('EUR')
+  const [discountInput, setDiscountInput] = useState('')
+  const discountRef = useRef<HTMLInputElement>(null)
+  const discountLine = cart.find((l) => l.key === discountKey) ?? null
+  const discountGross = discountLine ? cents(discountLine.price_ttc * discountLine.quantity) : 0
+  const discountText = discountInput.trim()
+  const discountValue = AMOUNT_PATTERN.test(discountText) ? parseAmount(discountText) : null
+  const discountAmount = discountValue === null ? null : discountMode === 'PCT' ? cents((discountGross * discountValue) / 100) : discountValue
+  const discountError = !discountText
+    ? null
+    : discountValue === null
+      ? 'Saisissez un nombre, avec deux décimales maximum.'
+      : discountMode === 'PCT' && discountValue > 100
+        ? 'Un pourcentage va de 0 à 100 %.'
+        : discountAmount! > discountGross
+          ? `La remise ne peut pas dépasser le prix de la ligne (${formatEuro(discountGross)}).`
+          : null
 
   const subtotal = cents(cart.reduce((s, l) => s + l.price_ttc * l.quantity, 0))
   const totalDiscount = cents(cart.reduce((s, l) => s + l.discount, 0))
@@ -172,17 +195,27 @@ export function CaisseScreen({
     setAmountInput('')
   }
 
-  const applyDiscount = (line: CartLine) => {
-    const raw = window.prompt(`Remise sur « ${line.model} » (montant en € ou pourcentage, ex. 10%)`, line.discount ? String(line.discount) : '')
-    if (raw === null) return
-    const gross = line.price_ttc * line.quantity
-    const discount = raw.trim().endsWith('%') ? (gross * parseAmount(raw.replace('%', ''))) / 100 : parseAmount(raw)
-    updateLine(line.key, { discount })
+  const openDiscount = (line: CartLine) => {
+    setDiscountKey(line.key)
+    setDiscountMode('EUR')
+    setDiscountInput(line.discount ? String(line.discount).replace('.', ',') : '')
+  }
+
+  const confirmDiscount = (remove = false) => {
+    if (!discountLine) return
+    if (!remove && (discountAmount === null || discountError)) return
+    updateLine(discountLine.key, { discount: remove ? 0 : discountAmount! })
+    setDiscountKey(null)
   }
 
   const addPayment = (method: PaymentMethod) => {
     if (remaining <= 0) return
-    const typed = amountInput ? parseAmount(amountInput) : remaining
+    const raw = amountInput.replace(/\s/g, '')
+    if (raw && !AMOUNT_PATTERN.test(raw)) {
+      setError('Montant de règlement invalide : saisissez par exemple 20 ou 20,50.')
+      return
+    }
+    const typed = raw ? parseAmount(raw) : remaining
     if (typed <= 0) return
     if (method === 'ESPÈCES' && typed > remaining) setCashReceived(typed)
     else if (typed > remaining) {
@@ -268,6 +301,34 @@ export function CaisseScreen({
           <Input id="service-price" autoFocus inputMode="decimal" placeholder="0,00" value={serviceAmount} {...selectWholeAmount} onChange={(e) => setServiceAmount(e.target.value)} className="h-14 text-right text-2xl tabular-nums" />
           {serviceAmount && !validServiceAmount && <p role="alert" className="text-sm text-destructive">Saisissez un montant de 0,01 à 999 999,99 €, avec deux décimales maximum.</p>}
           <Button type="submit" disabled={!validServiceAmount || processing}>{editingKey ? 'Modifier le montant' : 'Ajouter au panier'}</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+    <Dialog open={!!discountLine} onOpenChange={(open) => { if (!open) setDiscountKey(null) }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Remise sur « {discountLine?.model} »</DialogTitle>
+          <DialogDescription>Prix de la ligne : {formatEuro(discountGross)} TTC.</DialogDescription>
+        </DialogHeader>
+        <form onSubmit={(e) => { e.preventDefault(); confirmDiscount() }} className="grid gap-4">
+          <div className="grid grid-cols-2 gap-2">
+            {(['EUR', 'PCT'] as const).map((mode) => (
+              <Button key={mode} type="button" variant={discountMode === mode ? 'default' : 'outline'} aria-pressed={discountMode === mode} onClick={() => { setDiscountMode(mode); discountRef.current?.focus() }}>
+                {mode === 'EUR' ? 'Montant en €' : 'Pourcentage'}
+              </Button>
+            ))}
+          </div>
+          <label htmlFor="discount-value" className="text-sm font-medium">{discountMode === 'EUR' ? 'Remise (€)' : 'Remise (%)'}</label>
+          <Input id="discount-value" ref={discountRef} autoFocus inputMode="decimal" placeholder="0" value={discountInput} {...selectWholeAmount} onChange={(e) => setDiscountInput(e.target.value)} className="h-14 text-right text-2xl tabular-nums" />
+          {discountError ? (
+            <p role="alert" className="text-sm text-destructive">{discountError}</p>
+          ) : (
+            discountAmount !== null && <p className="text-sm">Nouveau prix : <strong className="tabular-nums">{formatEuro(discountGross - discountAmount)}</strong> (remise de {formatEuro(discountAmount)})</p>
+          )}
+          <Button type="submit" disabled={discountAmount === null || !!discountError}>Appliquer la remise</Button>
+          {discountLine && discountLine.discount > 0 && (
+            <Button type="button" variant="outline" onClick={() => confirmDiscount(true)}>Retirer la remise</Button>
+          )}
         </form>
       </DialogContent>
     </Dialog>
@@ -386,7 +447,7 @@ export function CaisseScreen({
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      onClick={() => applyDiscount(line)}
+                      onClick={() => openDiscount(line)}
                       aria-label="Remise"
                       title="Appliquer une remise"
                       className={cn('order-4 size-9 sm:order-3 sm:size-7', line.discount > 0 && 'text-emerald-600')}
