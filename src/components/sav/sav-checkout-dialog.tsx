@@ -10,6 +10,7 @@ import { toast } from '@/components/ui/toast'
 import { checkoutSav, listServices, type ServiceOption } from '@/app/actions/sav'
 import { ReceiptDialog } from '@/components/caisse/receipt-dialog'
 import { formatEuro, PAYMENT_LABELS } from '@/lib/format'
+import { selectWholeAmount } from '@/lib/amount-field'
 import { cn } from '@/lib/utils'
 
 type Method = 'CB' | 'ESPÈCES' | 'VIREMENT' | 'CHÈQUE' | 'AUTRE'
@@ -84,25 +85,28 @@ function CheckoutForm({
 }) {
   const [services, setServices] = useState<ServiceOption[]>([])
   const [serviceId, setServiceId] = useState('')
-  const [amountInput, setAmountInput] = useState(amountDue === null ? '' : amountDue.toFixed(2).replace('.', ','))
+  // Un dossier gratuit (0 €) ne s'encaisse pas : le champ reste alors vide
+  const [amountInput, setAmountInput] = useState(amountDue ? amountDue.toFixed(2).replace('.', ',') : '')
   const [payments, setPayments] = useState<Array<{ method: Method; amount: number }>>([])
   const [warranty, setWarranty] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
+  // Aucune prestation présélectionnée : sinon tout SAV non modifié partait en « Pile »
   useEffect(() => {
     let cancelled = false
     listServices().then((list) => {
-      if (cancelled) return
-      setServices(list)
-      setServiceId((current) => current || list[0]?.id || '')
+      if (!cancelled) setServices(list)
     })
     return () => {
       cancelled = true
     }
   }, [])
 
-  const amount = parseAmount(amountInput)
+  // Même règle qu'en caisse : un montant mal saisi (« 59,008 ») est refusé, jamais arrondi
+  const amountText = amountInput.replace(/\s/g, '')
+  const validAmount = /^\d+(?:[.,]\d{1,2})?$/.test(amountText) && parseAmount(amountText) > 0 && parseAmount(amountText) <= 999999.99
+  const amount = validAmount ? parseAmount(amountText) : 0
   const paid = cents(payments.reduce((s, p) => s + p.amount, 0))
   const remaining = cents(amount - paid)
 
@@ -115,6 +119,10 @@ function CheckoutForm({
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    if (!serviceId) {
+      setError('Choisissez la prestation facturée.')
+      return
+    }
     if (amount <= 0) {
       setError('Saisissez le montant à encaisser.')
       return
@@ -152,7 +160,9 @@ function CheckoutForm({
           required
           className="h-10 rounded-lg border border-input bg-transparent px-2 text-sm"
         >
-          {services.length === 0 && <option value="">Chargement…</option>}
+          <option value="" disabled>
+            {services.length === 0 ? 'Chargement…' : 'Choisir la prestation…'}
+          </option>
           {services.map((s) => (
             <option key={s.id} value={s.id}>
               {s.label}
@@ -168,7 +178,9 @@ function CheckoutForm({
           id="sav-amount"
           inputMode="decimal"
           required
+          placeholder="0,00"
           value={amountInput}
+          {...selectWholeAmount}
           onChange={(e) => {
             setAmountInput(e.target.value)
             setPayments([])
@@ -176,6 +188,11 @@ function CheckoutForm({
           }}
           className="h-11 text-right text-lg tabular-nums"
         />
+        {amountText && !validAmount ? (
+          <p role="alert" className="text-sm text-destructive">Saisissez un montant de 0,01 à 999 999,99 €, avec deux décimales maximum.</p>
+        ) : (
+          amountDue ? <span className="text-xs text-muted-foreground">Montant repris du dossier ({formatEuro(amountDue)}). Tapez un autre montant pour le remplacer.</span> : null
+        )}
       </div>
 
       <label

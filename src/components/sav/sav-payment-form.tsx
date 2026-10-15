@@ -8,6 +8,7 @@ import { toast } from '@/components/ui/toast'
 import { updateSavPayment } from '@/app/actions/sav'
 import { savPaymentSchema } from '@/lib/sav-payment'
 import { formatEuro } from '@/lib/format'
+import { selectWholeAmount } from '@/lib/amount-field'
 import { cn } from '@/lib/utils'
 
 export function SavPaymentForm({ id, amountDue, isPaid }: { id: string; amountDue: number | null; isPaid: boolean }) {
@@ -37,7 +38,7 @@ export function SavPaymentForm({ id, amountDue, isPaid }: { id: string; amountDu
       <fieldset disabled={pending} className="grid gap-4">
         <div className="grid gap-1.5">
           <Label htmlFor="sav-amount-due">Montant à payer (TTC) en €</Label>
-          <Input id="sav-amount-due" inputMode="decimal" placeholder="À définir" value={amount} onChange={(e) => { setAmount(e.target.value); setError(null) }} className="h-11 text-right text-lg tabular-nums" />
+          <Input id="sav-amount-due" inputMode="decimal" placeholder="À définir" value={amount} {...selectWholeAmount} onChange={(e) => { setAmount(e.target.value); setError(null) }} className="h-11 text-right text-lg tabular-nums" />
           <p className="text-xs text-muted-foreground">Laissez vide si le montant n’est pas encore connu.</p>
         </div>
         <div className="flex items-center justify-between gap-3">

@@ -15,6 +15,7 @@ import {
 import { CustomerFormDialog } from '@/components/shared/customer-form-dialog'
 import { ReceiptDialog } from '@/components/caisse/receipt-dialog'
 import { formatEuro, PAYMENT_LABELS, toHT } from '@/lib/format'
+import { selectWholeAmount } from '@/lib/amount-field'
 import { cn } from '@/lib/utils'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 
@@ -264,7 +265,7 @@ export function CaisseScreen({
         </DialogHeader>
         <form onSubmit={(e) => { e.preventDefault(); confirmService() }} className="grid gap-4">
           <label htmlFor="service-price" className="text-sm font-medium">Montant TTC (€)</label>
-          <Input id="service-price" autoFocus inputMode="decimal" placeholder="0,00" value={serviceAmount} onChange={(e) => setServiceAmount(e.target.value)} className="h-14 text-right text-2xl tabular-nums" />
+          <Input id="service-price" autoFocus inputMode="decimal" placeholder="0,00" value={serviceAmount} {...selectWholeAmount} onChange={(e) => setServiceAmount(e.target.value)} className="h-14 text-right text-2xl tabular-nums" />
           {serviceAmount && !validServiceAmount && <p role="alert" className="text-sm text-destructive">Saisissez un montant de 0,01 à 999 999,99 €, avec deux décimales maximum.</p>}
           <Button type="submit" disabled={!validServiceAmount || processing}>{editingKey ? 'Modifier le montant' : 'Ajouter au panier'}</Button>
         </form>
