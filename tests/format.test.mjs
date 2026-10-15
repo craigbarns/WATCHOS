@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { parisDayStartISO, parisYesterday, toHT } from '../src/lib/format.ts'
+import { parisDayStartISO, parisYesterday, pendingClosureDays, toHT } from '../src/lib/format.ts'
 import { generateFiscalHash, verifyFiscalChain } from '../src/lib/fiscal/core.ts'
 
 test('Paris day boundaries remain correct on DST transition days', () => {
@@ -13,6 +13,18 @@ test('Paris day boundaries remain correct on DST transition days', () => {
     ['2026-10-26', '2026-10-25T23:00:00.000Z'],
   ]) assert.equal(parisDayStartISO(day), expected)
   assert.throws(() => parisDayStartISO('2026-02-30'))
+})
+
+test('Forgotten Z closures are listed by Paris day, oldest first, excluding today', () => {
+  const events = [
+    '2026-10-12T09:00:00Z', '2026-10-12T15:00:00Z', // 12 octobre, déjà clôturé
+    '2026-10-13T22:30:00Z', // 0 h 30 à Paris : 14 octobre
+    '2026-10-10T08:00:00Z',
+    '2026-10-15T07:00:00Z', // aujourd'hui : jamais clôturé avant la fin de la journée
+  ]
+  const closures = ['2026-10-11T22:00:00Z'] // Z du 12 octobre (minuit à Paris)
+  assert.deepEqual(pendingClosureDays(events, closures, '2026-10-15'), ['2026-10-10', '2026-10-14'])
+  assert.deepEqual(pendingClosureDays([], closures, '2026-10-15'), [])
 })
 
 test('Yesterday is a calendar day even after a 23-hour day', () => {

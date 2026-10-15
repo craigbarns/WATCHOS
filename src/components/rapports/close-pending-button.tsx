@@ -3,26 +3,21 @@
 import { useTransition } from 'react'
 import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
-import { closePendingPeriods } from '@/app/actions/rapports'
+import { closePendingDays } from '@/app/actions/rapports'
 
-export function closedSummary({ days, months, years }: { days: number; months: number; years: number }) {
-  return [days && `${days} journée(s)`, months && `${months} mois`, years && `${years} année(s)`].filter(Boolean).join(', ')
-}
-
-/** Clôture d'un coup toutes les périodes terminées : journées, puis mois, puis années. */
-export function ClosePendingButton() {
+/** Génère d'un coup le Z de toutes les journées terminées qui n'ont pas été clôturées. */
+export function ClosePendingButton({ count }: { count: number }) {
   const [pending, startTransition] = useTransition()
 
   const submit = () => {
-    if (!window.confirm('Clôturer toutes les périodes terminées (journées, mois, années) ? Ces clôtures sont définitives.')) return
+    if (!window.confirm(`Générer le Z des ${count} journée(s) non clôturée(s) ? Ces clôtures sont définitives.`)) return
     startTransition(async () => {
-      const result = await closePendingPeriods()
+      const result = await closePendingDays()
       if (!result.success) {
-        toast.add({ title: 'Clôtures impossibles', description: result.error, type: 'error' })
+        toast.add({ title: 'Clôture interrompue', description: `${result.closed} journée(s) clôturée(s). ${result.error}`, type: 'error' })
         return
       }
-      const summary = closedSummary(result.closed)
-      toast.add({ title: summary ? `Clôturé : ${summary}` : 'Tout était déjà clôturé', type: 'success' })
+      toast.add({ title: result.closed ? `${result.closed} journée(s) clôturée(s)` : 'Tout était déjà clôturé', type: 'success' })
     })
   }
 

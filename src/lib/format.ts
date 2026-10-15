@@ -38,23 +38,6 @@ export function formatDate(value: string | Date): string {
   return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })
 }
 
-export type ClosureType = 'DAILY' | 'MONTHLY' | 'ANNUAL'
-
-export const CLOSURE_LABELS: Record<ClosureType, { title: string; period: string }> = {
-  DAILY: { title: 'Clôture Z', period: 'Journée' },
-  MONTHLY: { title: 'Clôture mensuelle', period: 'Mois' },
-  ANNUAL: { title: 'Clôture annuelle', period: 'Année' },
-}
-
-/** Période d'une clôture, en heure de Paris : « 15/10/2026 », « octobre 2026 » ou « 2026 » */
-export function formatClosurePeriod(type: ClosureType, periodStart: string | Date): string {
-  if (type === 'DAILY') return formatDate(periodStart)
-  return new Date(periodStart).toLocaleDateString('fr-FR', {
-    timeZone: 'Europe/Paris',
-    ...(type === 'MONTHLY' ? { month: 'long', year: 'numeric' } : { year: 'numeric' }),
-  })
-}
-
 /** Date du jour (YYYY-MM-DD) dans le fuseau de la boutique */
 export function parisDay(date: Date = new Date()): string {
   return date.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })
@@ -63,6 +46,15 @@ export function parisDay(date: Date = new Date()): string {
 /** Journée de boutique (YYYY-MM-DD) correspondant à un horodatage */
 export function parisDayOf(value: string | Date): string {
   return parisDay(new Date(value))
+}
+
+/**
+ * Journées terminées (heure de Paris) qui ont des opérations mais pas encore de clôture Z,
+ * de la plus ancienne à la plus récente : c'est l'ordre dans lequel les clôturer.
+ */
+export function pendingClosureDays(eventDates: string[], closedDayStarts: string[], today: string): string[] {
+  const closed = new Set(closedDayStarts.map(parisDayOf))
+  return [...new Set(eventDates.map(parisDayOf))].filter((day) => day < today && !closed.has(day)).sort()
 }
 
 /** Veille (YYYY-MM-DD) dans le fuseau de la boutique */

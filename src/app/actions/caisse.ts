@@ -96,10 +96,7 @@ export type FinalizeSaleResult =
   | { success: true; data: { sale_id: string; receipt_number: string; hash?: string; total_ttc?: number } }
   | { success: false; error: string }
 
-/**
- * Enregistre la garantie d'un an à part : la vente et la chaîne fiscale restent intactes.
- * La base n'accepte que 12 mois, sur une vente encaissée il y a moins de 15 minutes.
- */
+/** Enregistre la garantie d'un an à part : la vente et la chaîne fiscale restent intactes. */
 export async function addWarranty(saleId: string): Promise<boolean> {
   const guard = await requireStaff(['ADMIN', 'VENDEUR'])
   if (!guard.ok || !z.guid().safeParse(saleId).success) return false

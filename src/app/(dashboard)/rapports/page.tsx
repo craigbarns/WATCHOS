@@ -2,17 +2,16 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { ShieldAlert, ShieldCheck } from 'lucide-react'
+import { Download, ShieldAlert, ShieldCheck } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getCurrentProfile } from '@/lib/auth'
 import { loadFiscalJournal } from '@/lib/fiscal/load'
-import { CLOSURE_LABELS, formatClosurePeriod, formatDate, formatDateTime, formatEuro, parisDay, parisDayOf, parisYesterday, type ClosureType } from '@/lib/format'
+import { formatDate, formatDateTime, formatEuro, parisDay, parisDayOf, parisYesterday, pendingClosureDays } from '@/lib/format'
 import { CashSummary } from '@/components/rapports/cash-summary'
 import { ZTicketButton } from '@/components/rapports/z-ticket'
 import type { CashReport } from '@/lib/cash-report'
 import { CloseDayForm } from '@/components/rapports/close-day-form'
 import { ClosePendingButton } from '@/components/rapports/close-pending-button'
-import { ArchivePanel } from '@/components/rapports/archive-panel'
 import { ReprintButton } from '@/components/caisse/receipt-dialog'
 
 export default async function RapportsPage() {
@@ -26,32 +25,28 @@ export default async function RapportsPage() {
     supabase.rpc('day_cash_report', { p_day: today }),
     supabase.from('settings').select('store_name, company_name, address, siret, vat_number').limit(1).maybeSingle(),
   ])
-  const { events, closures, archives, eventsCheck, closuresCheck, archivesCheck } = journal
+  const { events, closures, eventsCheck, closuresCheck } = journal
   const cashToday = (todayReport ?? null) as CashReport | null
   // La fonction SQL day_cash_report arrive avec la migration 20260922000000_cash_report.sql
   const cashReportMissing = todayError?.code === 'PGRST202'
 
   const yesterday = parisYesterday()
-  const lastClosure = closures.findLast((c) => c.closure_type === 'DAILY')
+  const lastClosure = closures.at(-1)
   const lastEvents = events.slice(-15).reverse()
   const perpetual = events.reduce((s, e) => s + Number(e.amount_ttc), 0)
 
   const integrity = [
     { label: 'Journal des opérations', check: eventsCheck },
     { label: 'Journal des clôtures', check: closuresCheck },
-    { label: 'Registre des archives', check: archivesCheck },
   ]
 
-  // Périodes terminées, avec des opérations, encore sans clôture (obligatoires : jour, mois, année)
-  const closed = new Set(closures.map((c) => `${c.closure_type}:${parisDayOf(c.period_start)}`))
-  const eventDays = [...new Set(events.map((e) => parisDayOf(e.occurred_at)))]
-  const pending = {
-    days: eventDays.filter((d) => d < today && !closed.has(`DAILY:${d}`)).length,
-    months: [...new Set(eventDays.map((d) => `${d.slice(0, 7)}-01`))].filter((m) => m < `${today.slice(0, 7)}-01` && !closed.has(`MONTHLY:${m}`)).length,
-    years: [...new Set(eventDays.map((d) => `${d.slice(0, 4)}-01-01`))].filter((y) => y < `${today.slice(0, 4)}-01-01` && !closed.has(`ANNUAL:${y}`)).length,
-  }
-  const pendingTotal = pending.days + pending.months + pending.years
-  const years = [...new Set([...eventDays.map((d) => d.slice(0, 4)), today.slice(0, 4)])].sort()
+  // Journées terminées avec des ventes mais sans Z (oubliées)
+  const pendingDays = pendingClosureDays(
+    events.map((e) => e.occurred_at),
+    closures.filter((c) => c.closure_type === 'DAILY').map((c) => c.period_start),
+    today
+  )
+  const years = [...new Set([...events.map((e) => parisDayOf(e.occurred_at).slice(0, 4)), today.slice(0, 4)])].sort().reverse()
 
   return (
     <div className="space-y-6">
@@ -137,23 +132,23 @@ export default async function RapportsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Clôtures</CardTitle>
+            <CardTitle>Clôture journalière (Z)</CardTitle>
             <CardDescription>
-              Journalière, mensuelle et annuelle, faites automatiquement à l&apos;ouverture.
-              {lastClosure && ` Dernier Z : ${formatDate(lastClosure.period_start)} (n°${lastClosure.sequence_number}).`}
+              Faite automatiquement à la première ouverture du jour pour les journées oubliées.
+              {lastClosure && ` Dernière : ${formatDate(lastClosure.period_start)} (n°${lastClosure.sequence_number}).`}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {pendingTotal === 0 ? (
+            {pendingDays.length === 0 ? (
               <p className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400">
-                <ShieldCheck className="size-4" /> Toutes les périodes terminées sont clôturées.
+                <ShieldCheck className="size-4" /> Toutes les journées terminées sont clôturées.
               </p>
             ) : (
               <div className="space-y-2">
                 <p className="text-sm text-destructive">
-                  À clôturer : {[pending.days && `${pending.days} journée(s)`, pending.months && `${pending.months} mois`, pending.years && `${pending.years} année(s)`].filter(Boolean).join(', ')}.
+                  {pendingDays.length} journée(s) sans Z, depuis le {formatDate(pendingDays[0])}.
                 </p>
-                <ClosePendingButton />
+                <ClosePendingButton count={pendingDays.length} />
               </div>
             )}
             <details className="text-sm">
@@ -181,24 +176,20 @@ export default async function RapportsPage() {
         <CardHeader>
           <CardTitle>Archives fiscales</CardTitle>
           <CardDescription>
-            À faire au moins une fois par an, après la clôture annuelle. Conservez chaque fichier six ans, hors de la caisse
-            (clé USB, disque, stockage en ligne). Chaque archive est inscrite au registre avec son empreinte.
+            Au moins une fois par an : tickets ligne par ligne, règlements, opérations et clôtures, au format JSON.
+            Conservez chaque fichier six ans hors de la caisse (clé USB, disque, stockage en ligne). Son empreinte
+            SHA-256 figure dans son nom : notez-la, elle prouve plus tard que le fichier n&apos;a pas été modifié.
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <ArchivePanel
-            years={years}
-            archives={archives.map((a) => ({
-              sequence_number: a.sequence_number,
-              period_start: a.period_start,
-              period_end: a.period_end,
-              sales_count: a.sales_count,
-              total_ttc: Number(a.total_ttc),
-              file_sha256: a.file_sha256,
-              created_at: a.created_at,
-              author: a.author?.full_name ?? null,
-            }))}
-          />
+        <CardContent className="flex flex-wrap gap-2">
+          {years.map((year) => (
+            <a key={year} href={`/rapports/archive?annee=${year}`} className="inline-flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium hover:bg-muted">
+              <Download className="size-4" /> Archive {year}
+            </a>
+          ))}
+          <a href="/rapports/archive" className="inline-flex h-9 items-center gap-2 rounded-lg border bg-background px-3 text-sm font-medium hover:bg-muted">
+            <Download className="size-4" /> Tout l&apos;historique
+          </a>
         </CardContent>
       </Card>
 
@@ -211,7 +202,7 @@ export default async function RapportsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead className="pl-4">N°</TableHead>
-                <TableHead>Période</TableHead>
+                <TableHead>Journée</TableHead>
                 <TableHead className="text-right">Opérations</TableHead>
                 <TableHead className="text-right">HT</TableHead>
                 <TableHead className="text-right">TVA</TableHead>
@@ -232,10 +223,7 @@ export default async function RapportsPage() {
                 [...closures].reverse().map((c) => (
                   <TableRow key={c.sequence_number}>
                     <TableCell className="pl-4 font-mono">{c.sequence_number}</TableCell>
-                    <TableCell>
-                      <span className="text-muted-foreground">{CLOSURE_LABELS[c.closure_type as ClosureType]?.period ?? c.closure_type} </span>
-                      {formatClosurePeriod(c.closure_type as ClosureType, c.period_start)}
-                    </TableCell>
+                    <TableCell>{formatDate(c.period_start)}</TableCell>
                     <TableCell className="text-right tabular-nums">{c.operations_count}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatEuro(c.total_ht)}</TableCell>
                     <TableCell className="text-right tabular-nums">{formatEuro(c.total_vat)}</TableCell>
@@ -249,7 +237,6 @@ export default async function RapportsPage() {
                           store={store}
                           closure={{
                             sequence_number: c.sequence_number,
-                            closure_type: c.closure_type as ClosureType,
                             perpetual_total: Number(c.perpetual_total),
                             current_hash: c.current_hash,
                             created_at: c.created_at,

@@ -15,8 +15,7 @@ const SALE_COLUMNS =
 /**
  * Archive fiscale d'une année (?annee=2026) ou de tout l'historique, au format JSON ouvert :
  * opérations chaînées, clôtures, tickets ligne par ligne avec leurs règlements, et vérification
- * des chaînes. L'empreinte SHA-256 du fichier est inscrite au registre des archives, ce qui
- * donne date certaine à l'archive et permet de prouver plus tard qu'elle n'a pas été modifiée.
+ * des chaînes. L'empreinte SHA-256 du fichier figure dans son nom et dans l'en-tête X-Archive-Sha256.
  */
 export async function GET(request: Request) {
   const guard = await requireStaff(['ADMIN', 'VENDEUR'])
@@ -66,7 +65,6 @@ export async function GET(request: Request) {
       verification: {
         fiscal_events: journal.eventsCheck,
         fiscal_closures: journal.closuresCheck,
-        fiscal_archives: journal.archivesCheck,
       },
       fiscal_events: journal.events.filter((e) => inPeriod(e.occurred_at)),
       fiscal_closures: journal.closures.filter((c) => inPeriod(c.period_start)),
@@ -76,15 +74,7 @@ export async function GET(request: Request) {
     2
   )
   const sha256 = createHash('sha256').update(body, 'utf8').digest('hex')
-
-  // Le registre arrive avec la migration 20261015100000_fiscal_audit.sql : sans elle, le fichier reste téléchargeable
-  const { data: record, error: recordError } = await supabase.rpc('record_archive', { p_start: start, p_end: end, p_file_sha256: sha256 })
-  if (recordError && recordError.code !== 'PGRST202') return new Response(`Archive non enregistrée : ${recordError.message}`, { status: 500 })
-
-  const label = year ?? 'historique'
-  const filename = record
-    ? `archive-fiscale-${label}-n${record.sequence_number}-${sha256.slice(0, 8)}.json`
-    : `archive-fiscale-${label}-${now.toISOString().slice(0, 10)}.json`
+  const filename = `archive-fiscale-${year ?? 'historique'}-${now.toISOString().slice(0, 10)}-sha256-${sha256}.json`
 
   return new Response(body, {
     headers: {

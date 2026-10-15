@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/auth'
 import { revalidatePath } from 'next/cache'
+import { parisDay, pendingClosureDays } from '@/lib/format'
 
 export async function closeDay(day: string): Promise<{ success: true; message: string } | { success: false; error: string }> {
   const guard = await requireStaff(['ADMIN', 'VENDEUR'])
@@ -17,26 +18,46 @@ export async function closeDay(day: string): Promise<{ success: true; message: s
   return { success: true, message: `Clôture n°${data.sequence_number} générée (${data.operations_count} opération(s)).` }
 }
 
-export type PendingClosures = { days: number; months: number; years: number }
+const PAGE = 1000
+
+async function readAll<T>(query: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>) {
+  const rows: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await query(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    rows.push(...(data ?? []))
+    if (!data || data.length < PAGE) return rows
+  }
+}
 
 /**
- * Clôture, dans l'ordre, les journées, mois et années terminés qui ne l'ont pas
- * encore été (clôtures obligatoires : journalière, mensuelle et annuelle).
+ * Génère, dans l'ordre chronologique, le Z de chaque journée terminée qui a des
+ * opérations mais pas encore de clôture (journées oubliées).
  */
-export async function closePendingPeriods(): Promise<{ success: true; closed: PendingClosures } | { success: false; error: string }> {
+export async function closePendingDays(): Promise<{ success: true; closed: number } | { success: false; error: string; closed: number }> {
   const guard = await requireStaff(['ADMIN', 'VENDEUR'])
-  if (!guard.ok) return { success: false, error: guard.error }
+  if (!guard.ok) return { success: false, error: guard.error, closed: 0 }
 
   const supabase = await createClient()
-  const { data, error } = await supabase.rpc('close_pending')
-  if (error) {
-    return {
-      success: false,
-      error: error.code === 'PGRST202' ? 'Les clôtures automatiques doivent d’abord être activées en base (migration 20261015100000_fiscal_audit.sql).' : error.message,
+  let closed = 0
+  try {
+    const [events, closures] = await Promise.all([
+      readAll<{ occurred_at: string }>((from, to) => supabase.from('fiscal_events').select('occurred_at').order('sequence_number').range(from, to)),
+      readAll<{ period_start: string }>((from, to) =>
+        supabase.from('fiscal_closures').select('period_start').eq('closure_type', 'DAILY').order('sequence_number').range(from, to)
+      ),
+    ])
+    const days = pendingClosureDays(events.map((e) => e.occurred_at), closures.map((c) => c.period_start), parisDay())
+    for (const day of days) {
+      const { error } = await supabase.rpc('close_day', { p_day: day })
+      // Un autre poste vient de la clôturer : on passe à la suivante
+      if (error && !/déjà clôturée/.test(error.message)) return { success: false, error: error.message, closed }
+      if (!error) closed++
     }
+  } catch (e) {
+    return { success: false, error: (e as Error).message, closed }
   }
 
-  const closed = { days: Number(data.days), months: Number(data.months), years: Number(data.years) }
-  if (closed.days + closed.months + closed.years > 0) revalidatePath('/rapports')
+  if (closed > 0) revalidatePath('/rapports')
   return { success: true, closed }
 }

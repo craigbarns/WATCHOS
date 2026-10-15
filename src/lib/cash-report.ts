@@ -20,8 +20,6 @@ export type CashReport = {
   payments_total: number
   vat: Array<{ rate: number; base_ht: number; vat_amount: number; total_ttc: number }>
   balanced: boolean
-  /** Cumul TTC depuis le 1er janvier, scellé dans les clôtures depuis la migration 20261015100000_fiscal_audit.sql */
-  year_to_date_ttc?: number
 }
 
 export const PAYMENT_ORDER = ['ESPÈCES', 'CB', 'CHÈQUE', 'VIREMENT', 'AUTRE'] as const

@@ -2,16 +2,15 @@
 
 import { useEffect } from 'react'
 import { toast } from '@/components/ui/toast'
-import { closePendingPeriods } from '@/app/actions/rapports'
-import { closedSummary } from '@/components/rapports/close-pending-button'
+import { closePendingDays } from '@/app/actions/rapports'
 import { parisDay } from '@/lib/format'
 
 const KEY = 'hp:auto-close'
 let started = false
 
 /**
- * Clôtures obligatoires sans oubli : à la première ouverture de la journée, les
- * journées, mois et années terminés qui ne sont pas clôturés le sont automatiquement.
+ * Pas de Z oublié : à la première ouverture de la journée, les journées terminées
+ * qui ont des ventes mais pas de clôture sont clôturées automatiquement.
  */
 export function AutoClose() {
   useEffect(() => {
@@ -24,14 +23,13 @@ export function AutoClose() {
     }
     if (started || done === today) return
     started = true
-    closePendingPeriods()
+    closePendingDays()
       .then((result) => {
         if (!result.success) return
         try {
           localStorage.setItem(KEY, today)
         } catch {}
-        const summary = closedSummary(result.closed)
-        if (summary) toast.add({ title: 'Clôtures automatiques', description: `Clôturé : ${summary}.`, type: 'success' })
+        if (result.closed) toast.add({ title: 'Clôtures automatiques', description: `${result.closed} journée(s) clôturée(s) (Z).`, type: 'success' })
       })
       .catch(() => {})
   }, [])
