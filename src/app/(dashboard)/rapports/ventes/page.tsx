@@ -67,7 +67,7 @@ export default async function VentesPage({
 
   const supabase = await createClient()
   const from = (page - 1) * PAGE_SIZE
-  const [{ data: salesData, error, count }, { data: report }, { data: firstSale }] = await Promise.all([
+  const [{ data: salesData, error, count }, { data: report }, { data: firstSale }, { count: refundsInPeriod }] = await Promise.all([
     supabase
       .from('sales')
       .select(
@@ -81,6 +81,13 @@ export default async function VentesPage({
       .range(from, from + PAGE_SIZE - 1),
     supabase.rpc('cash_report', { p_start: rangeStart, p_end: rangeEnd }),
     supabase.from('sales').select('finalized_at').eq('status', 'FINALIZED').order('finalized_at').limit(1).maybeSingle(),
+    supabase
+      .from('sales')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'FINALIZED')
+      .not('parent_sale_id', 'is', null)
+      .gte('finalized_at', rangeStart)
+      .lt('finalized_at', rangeEnd),
   ])
   if (error) throw new Error('Les ventes ne peuvent pas être chargées.')
 
@@ -99,7 +106,10 @@ export default async function VentesPage({
 
   const totalTTC = cash ? Number(cash.total_ttc) : sales.reduce((s, r) => s + Number(r.total_ttc), 0)
   const totalHT = cash ? Number(cash.total_ht) : sales.reduce((s, r) => s + Number(r.total_ht), 0)
-  const refundCount = sales.filter((s) => s.parent_sale_id).length
+  // Un avoir n'est pas un ticket de vente, et la vente qu'il annule ne compte plus dans le panier moyen
+  const refundCount = refundsInPeriod ?? 0
+  const ticketCount = totalCount - refundCount
+  const basket = ticketCount > refundCount ? totalTTC / (ticketCount - refundCount) : 0
   const methods = cash ? paymentBreakdown(cash).filter((m) => m.count > 0) : []
 
   const linkTo = (du: string, au: string, p = 1) =>
@@ -184,10 +194,10 @@ export default async function VentesPage({
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          ['Tickets', String(totalCount)],
+          ['Tickets', String(ticketCount)],
           ['Total TTC', formatEuro(totalTTC)],
           ['Total HT', formatEuro(totalHT)],
-          ['Panier moyen', formatEuro(totalCount ? totalTTC / totalCount : 0)],
+          ['Panier moyen', formatEuro(basket)],
         ].map(([label, value]) => (
           <Card key={label}>
             <CardHeader className="pb-1">
@@ -201,7 +211,7 @@ export default async function VentesPage({
       {methods.length > 0 && (
         <p className="text-sm text-muted-foreground">
           {methods.map((m) => `${m.label} ${formatEuro(m.amount)}`).join(' · ')}
-          {refundCount > 0 && ` · ${refundCount} annulation(s) sur cette page`}
+          {refundCount > 0 && ` · ${refundCount} annulation(s)`}
           {' · '}
           <Link
             href={`/rapports/encaissements?du=${start}&au=${end}&mode=TOUS`}
@@ -215,7 +225,7 @@ export default async function VentesPage({
       <Card className="gap-0 py-0">
         <CardHeader className="border-b py-3">
           <CardTitle className="text-base">
-            {totalCount} vente(s)
+            {refundCount > 0 ? `${ticketCount} vente(s) et ${refundCount} avoir(s)` : `${totalCount} vente(s)`}
             {pageCount > 1 && ` · page ${page} sur ${pageCount}`}
           </CardTitle>
         </CardHeader>

@@ -87,6 +87,12 @@ export function ZTicket({ report, store, closure, day }: { report: CashReport; s
         <span>Tickets</span>
         <span>{report.tickets}</span>
       </div>
+      {Number(report.refunds) > 0 && (
+        <div className="flex justify-between">
+          <span>Annulations ({report.refunds})</span>
+          <span>{formatEuro(report.refunds_ttc)}</span>
+        </div>
+      )}
       <div className="flex justify-between">
         <span>Panier moyen</span>
         <span>{formatEuro(report.average_ticket)}</span>

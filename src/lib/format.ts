@@ -4,9 +4,17 @@ export function formatEuro(value: number | string | null | undefined): string {
   return euroFormatter.format(Number(value ?? 0))
 }
 
-/** Montant HT arrondi au centime, calculé comme en base : round(TTC / (1 + taux)) */
+/**
+ * Montant HT arrondi au centime, calculé comme en base : round(TTC / (1 + taux)).
+ * Calcul en entiers (centimes, taux en centièmes de point) avec l'arrondi de PostgreSQL
+ * (demi à l'opposé de zéro) : en virgule flottante, 8,79 € TTC donnait 7,32 € HT au lieu de 7,33 €.
+ */
 export function toHT(ttc: number, vatRate: number): number {
-  return Math.round((ttc / (1 + vatRate / 100)) * 100) / 100
+  const num = Math.round(Math.abs(ttc) * 100) * 10000
+  const den = 10000 + Math.round(vatRate * 100)
+  const rest = num % den
+  const cents = (num - rest) / den + (2 * rest >= den ? 1 : 0)
+  return (Math.sign(ttc) * cents) / 100
 }
 
 export function formatDateTime(value: string | Date): string {

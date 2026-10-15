@@ -11,7 +11,8 @@ Stack : Next.js 16 (App Router) · React 19 · Supabase (Postgres, Auth, RLS) ·
 2. Appliquer **dans l'ordre** les fichiers de `supabase/migrations/` (Supabase CLI `supabase db push`, ou SQL Editor).
 3. La migration `20260920000000_service_checkout.sql` installe les 11 postes de prestation et les statistiques, sans créer de vente ni de client fictif. Elle préserve les ventes historiques.
 4. La migration `20260921000000_sav_payment_and_store_name.sql` corrige le nom commercial en « Heures et Passion » et ajoute le suivi du règlement SAV.
-5. `npm install && npm run dev`, puis se connecter sur `/login` avec un compte provisionné dans Supabase Auth.
+5. La migration `20261015000000_report_tickets.sql` ne compte plus les avoirs comme des tickets (rapports, Z, statistiques) : panier moyen et plage de tickets justes. Aucun montant ni aucune donnée n'est modifié.
+6. `npm install && npm run dev`, puis se connecter sur `/login` avec un compte provisionné dans Supabase Auth.
    Le **premier compte** devient administrateur ; les suivants doivent être activés dans Paramètres → Équipe.
 
 ## Architecture fiscale

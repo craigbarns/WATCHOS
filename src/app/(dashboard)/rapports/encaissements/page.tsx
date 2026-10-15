@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/server'
 import { requireStaff } from '@/lib/auth'
 import { formatDateTime, formatEuro, PAYMENT_LABELS, parisDay, parisDayStartISO } from '@/lib/format'
-import { PAYMENT_ORDER } from '@/lib/cash-report'
+import { PAYMENT_ORDER, paymentBreakdown, type CashReport } from '@/lib/cash-report'
 import { ReprintButton } from '@/components/caisse/receipt-dialog'
 import { cn } from '@/lib/utils'
 
@@ -67,15 +67,24 @@ export default async function EncaissementsPage({
     .limit(MAX_ROWS)
   if (method !== 'TOUS') query = query.eq('method', method)
 
-  const { data, error } = valid ? await query : { data: [], error: null }
+  const [{ data, error }, { data: report }] = await Promise.all([
+    valid ? query : Promise.resolve({ data: [], error: null }),
+    valid ? supabase.rpc('cash_report', { p_start: startISO, p_end: endISO }) : Promise.resolve({ data: null }),
+  ])
   if (error) throw new Error('Le journal des encaissements ne peut pas être chargé.')
   const rows = (data ?? []) as unknown as PaymentRow[]
 
-  const totals = PAYMENT_ORDER.map((m) => {
-    const list = rows.filter((r) => r.method === m)
-    return { method: m, label: PAYMENT_LABELS[m], count: list.length, amount: list.reduce((s, r) => s + Number(r.amount), 0) }
-  })
-  const total = rows.reduce((s, r) => s + Number(r.amount), 0)
+  // Totaux calculés en base sur toute la période, quel que soit le filtre :
+  // la liste s'arrête à 500 règlements et ne contient que le mode choisi.
+  const cash = (report ?? null) as CashReport | null
+  const totals = cash
+    ? paymentBreakdown(cash)
+    : PAYMENT_ORDER.map((m) => {
+        const list = rows.filter((r) => r.method === m)
+        return { method: m, label: PAYMENT_LABELS[m], count: list.length, amount: list.reduce((s, r) => s + Number(r.amount), 0) }
+      })
+  const all = { method: 'TOUS', label: 'Tous', count: totals.reduce((n, t) => n + t.count, 0), amount: totals.reduce((s, t) => s + t.amount, 0) }
+  const total = method === 'TOUS' ? all.amount : (totals.find((t) => t.method === method)?.amount ?? 0)
   const link = (patch: Record<string, string>) => {
     const next = new URLSearchParams({ du: start, au: end, mode: method, ...patch })
     return `/rapports/encaissements?${next.toString()}`
@@ -113,7 +122,7 @@ export default async function EncaissementsPage({
       ) : (
         <>
           <div className="scrollbar-none -mx-3 flex gap-2 overflow-x-auto px-3 sm:mx-0 sm:flex-wrap sm:px-0">
-            {[{ method: 'TOUS', label: 'Tous', count: rows.length, amount: total }, ...totals].map((t) => (
+            {[all, ...totals].map((t) => (
               <Link
                 key={t.method}
                 href={link({ mode: t.method })}

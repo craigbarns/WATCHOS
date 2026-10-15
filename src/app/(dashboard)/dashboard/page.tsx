@@ -33,10 +33,26 @@ export default async function DashboardPage() {
   const today = parisDay()
   const todayStart = parisDayStartISO(today)
   const monthStart = parisDayStartISO(`${today.slice(0, 8)}01`)
+  const tomorrow = new Date(`${today}T12:00:00Z`)
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+  const tomorrowStart = parisDayStartISO(tomorrow.toISOString().slice(0, 10))
 
-  const [todaySales, monthSales, openSav, readySav, recentSales, recentSav] = await Promise.all([
-    supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', todayStart),
-    supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', monthStart),
+  const sum = (rows: Array<{ total_ttc: number }> | null) => (rows ?? []).reduce((s, r) => s + Number(r.total_ttc), 0)
+  const sumHT = (rows: Array<{ total_ht: number }> | null) => (rows ?? []).reduce((s, r) => s + Number(r.total_ht), 0)
+
+  // Totaux du mois agrégés en base : une lecture des ventes s'arrête à 1 000 lignes
+  const loadMonth = async () => {
+    if (canSell) {
+      const { data, error } = await supabase.rpc('cash_report', { p_start: monthStart, p_end: tomorrowStart })
+      if (!error && data) return { ttc: Number(data.total_ttc), ht: Number(data.total_ht), error: null }
+    }
+    const { data, error } = await supabase.from('sales').select('total_ttc, total_ht').eq('status', 'FINALIZED').gte('finalized_at', monthStart)
+    return { ttc: sum(data), ht: sumHT(data), error }
+  }
+
+  const [todaySales, month, openSav, readySav, recentSales, recentSav] = await Promise.all([
+    supabase.from('sales').select('total_ttc, total_ht, parent_sale_id').eq('status', 'FINALIZED').gte('finalized_at', todayStart),
+    loadMonth(),
     supabase.from('sav_cases').select('id', { count: 'exact', head: true }).not('status', 'in', `(${SAV_CLOSED_STATUSES.join(',')})`),
     supabase.from('sav_cases').select('id', { count: 'exact', head: true }).in('status', ['PRET', 'CLIENT_PREVENU']),
     supabase
@@ -52,24 +68,29 @@ export default async function DashboardPage() {
       .limit(6),
   ])
 
-  if ([todaySales, monthSales, openSav, readySav, recentSales, recentSav].some((result) => result.error)) {
+  if ([todaySales, month, openSav, readySav, recentSales, recentSav].some((result) => result.error)) {
     throw new Error('Le tableau de bord ne peut pas être chargé.')
   }
 
-  const sum = (rows: Array<{ total_ttc: number }> | null) => (rows ?? []).reduce((s, r) => s + Number(r.total_ttc), 0)
-  const sumHT = (rows: Array<{ total_ht: number }> | null) => (rows ?? []).reduce((s, r) => s + Number(r.total_ht), 0)
   const caToday = sum(todaySales.data)
-  const salesCount = todaySales.data?.length ?? 0
-  const basket = salesCount ? caToday / salesCount : 0
+  // Un avoir annule une vente : il ne compte ni comme vente ni dans le panier moyen
+  const salesCount = (todaySales.data ?? []).filter((sale) => !sale.parent_sale_id).length
+  const refundsCount = (todaySales.data?.length ?? 0) - salesCount
+  const basket = salesCount > refundsCount ? caToday / (salesCount - refundsCount) : 0
 
   const kpis = [
     {
       title: "CA aujourd'hui (TTC)",
       value: formatEuro(caToday),
-      hint: `${formatEuro(sumHT(todaySales.data))} HT · mois : ${formatEuro(sumHT(monthSales.data))} HT / ${formatEuro(sum(monthSales.data))} TTC`,
+      hint: `${formatEuro(sumHT(todaySales.data))} HT · mois : ${formatEuro(month.ht)} HT / ${formatEuro(month.ttc)} TTC`,
       icon: Euro,
     },
-    { title: "Ventes aujourd'hui", value: String(salesCount), hint: salesCount ? `Panier moyen : ${formatEuro(basket)}` : 'Aucune vente', icon: ShoppingBag },
+    {
+      title: "Ventes aujourd'hui",
+      value: String(salesCount),
+      hint: salesCount ? `Panier moyen : ${formatEuro(basket)}${refundsCount ? ` · ${refundsCount} annulation(s)` : ''}` : 'Aucune vente',
+      icon: ShoppingBag,
+    },
     { title: 'SAV en cours', value: String(openSav.count ?? 0), hint: 'Dossiers non restitués', icon: Wrench },
     {
       title: 'SAV à récupérer',

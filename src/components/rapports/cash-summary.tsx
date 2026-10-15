@@ -34,6 +34,7 @@ export function CashSummary({ report, compact = false }: { report: CashReport; c
         <dl className="space-y-1 text-sm">
           {[
             ['Tickets', String(report.tickets)],
+            ...(Number(report.refunds) > 0 ? [['Annulations (avoirs)', `${report.refunds} · ${formatEuro(report.refunds_ttc)}`]] : []),
             ['Panier moyen', formatEuro(report.average_ticket)],
             ['Remises accordées', formatEuro(report.discounts)],
             ['Total HT', formatEuro(report.total_ht)],

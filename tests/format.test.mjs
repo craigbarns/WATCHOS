@@ -24,6 +24,21 @@ test('VAT calculation rounds each line to cents', () => {
   assert.equal(toHT(120, 20), 100)
   assert.equal(toHT(0.5, 20), 0.42)
   assert.equal(toHT(105.5, 5.5), 100)
+  assert.equal(toHT(8.79, 20), 7.33)
+})
+
+test('Displayed HT matches PostgreSQL rounding for every amount up to 1,000 €', () => {
+  // round(ttc / (1 + taux / 100), 2) en arithmétique exacte, demi à l'opposé de zéro
+  const exact = (cents, rate) => {
+    const num = BigInt(cents) * 10000n
+    const den = 10000n + BigInt(Math.round(rate * 100))
+    return Number(num / den + (2n * (num % den) >= den ? 1n : 0n)) / 100
+  }
+  for (const rate of [20, 10, 5.5, 2.1, 0]) {
+    for (let cents = 1; cents <= 100000; cents++) {
+      if (toHT(cents / 100, rate) !== exact(cents, rate)) assert.fail(`${cents / 100} € TTC à ${rate} %`)
+    }
+  }
 })
 
 test('Journal verification rejects altered and truncated chains', () => {

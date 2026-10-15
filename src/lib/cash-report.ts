@@ -4,7 +4,11 @@ import { PAYMENT_LABELS } from '@/lib/format'
 export type CashReport = {
   period_start: string
   period_end: string
+  /** Tickets de vente, avoirs exclus depuis la migration 20261015000000_report_tickets.sql */
   tickets: number
+  /** Avoirs (annulations) de la période et leur montant ; absents des clôtures plus anciennes */
+  refunds?: number
+  refunds_ttc?: number
   total_ht: number
   total_vat: number
   total_ttc: number
