@@ -98,6 +98,29 @@ export function generateClosureHash(
   return sha256(`${previous_hash || 'GENESIS'}||${createClosureCanonicalString(payload, sequence_number)}`)
 }
 
+export interface ArchivePayload {
+  created_at: string
+  file_sha256: string
+  period_start: string
+  period_end: string
+  sales_count: number
+  total_ttc: number
+}
+
+/** Empreinte d'une archive enregistrée : format identique à record_archive (SQL). */
+export function generateArchiveHash(payload: ArchivePayload, sequence_number: number, previous_hash: string | null): string {
+  const canonical = [
+    `created_at:${isoSeconds(payload.created_at)}`,
+    `file_sha256:${payload.file_sha256}`,
+    `period_end:${isoSeconds(payload.period_end)}`,
+    `period_start:${isoSeconds(payload.period_start)}`,
+    `sales_count:${payload.sales_count}`,
+    `sequence_number:${sequence_number}`,
+    `total_ttc:${amount(payload.total_ttc)}`
+  ].join('|')
+  return sha256(`${previous_hash || 'GENESIS'}||${canonical}`)
+}
+
 export type ChainVerification =
   | { valid: true; count: number }
   | { valid: false; count: number; sequence_number: number; reason: string }
@@ -134,4 +157,8 @@ export function verifyFiscalChain(events: Array<ChainLink & { payload: FiscalPay
 
 export function verifyClosureChain(closures: Array<ChainLink & { payload: ClosurePayload }>): ChainVerification {
   return verifyChain(closures, (c) => generateClosureHash(c.payload, c.sequence_number, c.previous_hash))
+}
+
+export function verifyArchiveChain(archives: Array<ChainLink & { payload: ArchivePayload }>): ChainVerification {
+  return verifyChain(archives, (a) => generateArchiveHash(a.payload, a.sequence_number, a.previous_hash))
 }

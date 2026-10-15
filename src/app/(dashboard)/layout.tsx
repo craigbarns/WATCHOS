@@ -4,6 +4,7 @@ import { Sidebar } from '@/components/layout/sidebar'
 import { Header } from '@/components/layout/header'
 import { MobileNav } from '@/components/layout/mobile-nav'
 import { Toaster } from '@/components/ui/toast'
+import { AutoClose } from '@/components/rapports/auto-close'
 import { getCurrentProfile } from '@/lib/auth'
 
 export default async function DashboardLayout({
@@ -34,6 +35,7 @@ export default async function DashboardLayout({
 
   return (
     <Toaster>
+      {(profile.role === 'ADMIN' || profile.role === 'VENDEUR') && <AutoClose />}
       <a href="#main-content" className="workspace-skip sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded-lg focus:bg-white focus:p-3">Aller au contenu</a>
       <div className="flex h-dvh overflow-hidden bg-background">
         <Sidebar role={profile.role} />

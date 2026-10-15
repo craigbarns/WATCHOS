@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { verifyClosureChain, verifyFiscalChain, type ClosurePayload, type FiscalPayload } from '@/lib/fiscal/core'
+import { verifyArchiveChain, verifyClosureChain, verifyFiscalChain, type ClosurePayload, type FiscalPayload } from '@/lib/fiscal/core'
 import type { CashReport } from '@/lib/cash-report'
 
 const PAGE = 1000
@@ -44,15 +44,40 @@ export type ClosureRow = {
   details: CashReport | null
 }
 
-/** Charge l'intégralité des journaux fiscaux et vérifie les deux chaînes. */
+export type ArchiveRow = {
+  sequence_number: number
+  period_start: string
+  period_end: string
+  sales_count: number
+  total_ttc: number
+  file_sha256: string
+  previous_hash: string | null
+  current_hash: string
+  created_at: string
+  author: { full_name: string } | null
+}
+
+/** Registre des archives ; vide tant que la migration 20261015100000_fiscal_audit.sql n'est pas appliquée. */
+async function loadArchives(supabase: SupabaseClient): Promise<ArchiveRow[]> {
+  try {
+    return await fetchAll<ArchiveRow>((from, to) =>
+      supabase.from('fiscal_archives').select('*, author:profiles(full_name)').order('sequence_number').range(from, to)
+    )
+  } catch {
+    return []
+  }
+}
+
+/** Charge l'intégralité des journaux fiscaux et vérifie les trois chaînes. */
 export async function loadFiscalJournal(supabase: SupabaseClient) {
-  const [events, closures] = await Promise.all([
+  const [events, closures, archives] = await Promise.all([
     fetchAll<FiscalEventRow>((from, to) =>
       supabase.from('fiscal_events').select('*').order('sequence_number').range(from, to)
     ),
     fetchAll<ClosureRow>((from, to) =>
       supabase.from('fiscal_closures').select('*').order('sequence_number').range(from, to)
     ),
+    loadArchives(supabase),
   ])
 
   const eventsCheck = verifyFiscalChain(
@@ -61,6 +86,9 @@ export async function loadFiscalJournal(supabase: SupabaseClient) {
   const closuresCheck = verifyClosureChain(
     closures.map((c) => ({ ...c, payload: c }))
   )
+  const archivesCheck = verifyArchiveChain(
+    archives.map((a) => ({ ...a, payload: a }))
+  )
 
-  return { events, closures, eventsCheck, closuresCheck }
+  return { events, closures, archives, eventsCheck, closuresCheck, archivesCheck }
 }

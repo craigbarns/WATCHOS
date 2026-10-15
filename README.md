@@ -12,7 +12,8 @@ Stack : Next.js 16 (App Router) · React 19 · Supabase (Postgres, Auth, RLS) ·
 3. La migration `20260920000000_service_checkout.sql` installe les 11 postes de prestation et les statistiques, sans créer de vente ni de client fictif. Elle préserve les ventes historiques.
 4. La migration `20260921000000_sav_payment_and_store_name.sql` corrige le nom commercial en « Heures et Passion » et ajoute le suivi du règlement SAV.
 5. La migration `20261015000000_report_tickets.sql` ne compte plus les avoirs comme des tickets (rapports, Z, statistiques) : panier moyen et plage de tickets justes. Aucun montant ni aucune donnée n'est modifié.
-6. `npm install && npm run dev`, puis se connecter sur `/login` avec un compte provisionné dans Supabase Auth.
+6. La migration `20261015100000_fiscal_audit.sql` ajoute les clôtures mensuelles et annuelles, le rattrapage des clôtures, le registre des archives, et verrouille le règlement SAV et la garantie. Aucune vente ni aucune clôture existante n'est modifiée.
+7. `npm install && npm run dev`, puis se connecter sur `/login` avec un compte provisionné dans Supabase Auth.
    Le **premier compte** devient administrateur ; les suivants doivent être activés dans Paramètres → Équipe.
 
 ## Architecture fiscale
@@ -22,10 +23,17 @@ Stack : Next.js 16 (App Router) · React 19 · Supabase (Postgres, Auth, RLS) ·
   Les anciennes ventes de produits et leur contrôle de stock restent compatibles.
 - Chaque vente produit un `fiscal_events` chaîné en SHA-256 (hash précédent + format canonique).
 - Numérotation continue (tickets, événements, clôtures) via `fiscal_counters` verrouillé.
-- `close_day` génère la clôture journalière (Z) chaînée avec grand total perpétuel.
+- `close_period` génère les clôtures journalière (Z), mensuelle et annuelle obligatoires (BOI-TVA-DECLA-30-10-30),
+  dans une seule chaîne, avec le total de la période, le cumul depuis le 1er janvier et le total perpétuel.
+  `close_pending` clôture dans l'ordre les journées, mois et années terminés : il est appelé automatiquement
+  à la première ouverture de la journée par un administrateur ou un vendeur, et par le bouton « Tout clôturer ».
+- Archivage : l'export JSON (format ouvert) d'une année contient les opérations chaînées, les clôtures et les tickets
+  ligne par ligne avec leurs règlements. Son empreinte SHA-256 est inscrite au registre `fiscal_archives`, lui aussi
+  chaîné : un fichier conservé se vérifie depuis la page Rapports. Archiver au moins une fois par an et garder six ans.
 - Tables fiscales en ajout seul (triggers) ; aucune écriture directe possible (RLS).
+  Le règlement d'un dossier SAV (montant, payé, ticket lié) ne change que par les fonctions qui laissent une trace.
 - Le format canonique est dupliqué dans `src/lib/fiscal/core.ts` : **toute modification doit être faite des deux côtés**.
-  La page Rapports recalcule l'intégralité des deux chaînes et l'archive JSON est exportable.
+  La page Rapports recalcule l'intégralité des trois chaînes (opérations, clôtures, archives).
 
 ## Rôles
 

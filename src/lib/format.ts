@@ -38,6 +38,23 @@ export function formatDate(value: string | Date): string {
   return new Date(value).toLocaleDateString('fr-FR', { timeZone: 'Europe/Paris' })
 }
 
+export type ClosureType = 'DAILY' | 'MONTHLY' | 'ANNUAL'
+
+export const CLOSURE_LABELS: Record<ClosureType, { title: string; period: string }> = {
+  DAILY: { title: 'Clôture Z', period: 'Journée' },
+  MONTHLY: { title: 'Clôture mensuelle', period: 'Mois' },
+  ANNUAL: { title: 'Clôture annuelle', period: 'Année' },
+}
+
+/** Période d'une clôture, en heure de Paris : « 15/10/2026 », « octobre 2026 » ou « 2026 » */
+export function formatClosurePeriod(type: ClosureType, periodStart: string | Date): string {
+  if (type === 'DAILY') return formatDate(periodStart)
+  return new Date(periodStart).toLocaleDateString('fr-FR', {
+    timeZone: 'Europe/Paris',
+    ...(type === 'MONTHLY' ? { month: 'long', year: 'numeric' } : { year: 'numeric' }),
+  })
+}
+
 /** Date du jour (YYYY-MM-DD) dans le fuseau de la boutique */
 export function parisDay(date: Date = new Date()): string {
   return date.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' })

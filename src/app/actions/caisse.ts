@@ -96,12 +96,15 @@ export type FinalizeSaleResult =
   | { success: true; data: { sale_id: string; receipt_number: string; hash?: string; total_ttc?: number } }
   | { success: false; error: string }
 
-/** Enregistre la garantie à part : la vente et la chaîne fiscale restent intactes. */
-export async function addWarranty(saleId: string, months = 12): Promise<boolean> {
+/**
+ * Enregistre la garantie d'un an à part : la vente et la chaîne fiscale restent intactes.
+ * La base n'accepte que 12 mois, sur une vente encaissée il y a moins de 15 minutes.
+ */
+export async function addWarranty(saleId: string): Promise<boolean> {
   const guard = await requireStaff(['ADMIN', 'VENDEUR'])
-  if (!guard.ok) return false
+  if (!guard.ok || !z.guid().safeParse(saleId).success) return false
   const supabase = await createClient()
-  const { error } = await supabase.from('sale_warranties').insert({ sale_id: saleId, months, created_by: guard.profile.id })
+  const { error } = await supabase.from('sale_warranties').insert({ sale_id: saleId, months: 12, created_by: guard.profile.id })
   if (error && error.code !== '23505') {
     console.error('Warranty error:', error.message)
     return false

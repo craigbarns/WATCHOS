@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { FileText, Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { formatDate, formatDateTime, formatEuro } from '@/lib/format'
+import { CLOSURE_LABELS, formatClosurePeriod, formatDateTime, formatEuro, type ClosureType } from '@/lib/format'
 import { paymentBreakdown, type CashReport } from '@/lib/cash-report'
 import { printElement } from '@/lib/print'
 
@@ -12,15 +12,18 @@ export type ZStore = { store_name: string; company_name: string | null; address:
 
 export type ZClosure = {
   sequence_number: number
+  /** Journalière par défaut (clôtures antérieures aux clôtures mensuelles et annuelles) */
+  closure_type?: ClosureType
   perpetual_total: number
   current_hash: string
   created_at: string
   operator: string | null
 } | null
 
-/** Ticket de clôture Z, imprimable sur l'imprimante ticket. */
+/** Ticket de clôture (journalière, mensuelle ou annuelle), imprimable sur l'imprimante ticket. */
 export function ZTicket({ report, store, closure, day }: { report: CashReport; store: ZStore; closure: ZClosure; day: string }) {
   const rows = paymentBreakdown(report)
+  const type = closure?.closure_type ?? 'DAILY'
 
   return (
     <div className="print-area mx-auto w-full max-w-[80mm] bg-white p-4 font-mono text-[11px] leading-relaxed text-black">
@@ -33,12 +36,12 @@ export function ZTicket({ report, store, closure, day }: { report: CashReport; s
       </div>
 
       <div className="my-2 border-y-2 border-black py-1 text-center text-sm font-bold tracking-[0.2em]">
-        {closure ? `CLÔTURE Z N°${closure.sequence_number}` : 'APERÇU DE CAISSE'}
+        {closure ? `${CLOSURE_LABELS[type].title.toUpperCase()} N°${closure.sequence_number}` : 'APERÇU DE CAISSE'}
       </div>
 
       <div className="flex justify-between">
-        <span>Journée</span>
-        <span>{formatDate(day)}</span>
+        <span>{CLOSURE_LABELS[type].period}</span>
+        <span>{formatClosurePeriod(type, day)}</span>
       </div>
       {closure ? (
         <div className="flex justify-between">
@@ -123,6 +126,12 @@ export function ZTicket({ report, store, closure, day }: { report: CashReport; s
       {closure && (
         <>
           <div className="my-2 border-t border-dashed border-black" />
+          {report.year_to_date_ttc !== undefined && (
+            <div className="flex justify-between">
+              <span>Cumul depuis le 1er janvier</span>
+              <span>{formatEuro(report.year_to_date_ttc)}</span>
+            </div>
+          )}
           <div className="flex justify-between">
             <span>Grand total perpétuel</span>
             <span>{formatEuro(closure.perpetual_total)}</span>
@@ -175,8 +184,8 @@ export function ZTicketButton({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-lg">{closure ? `Clôture Z n°${closure.sequence_number}` : 'Caisse du jour'}</DialogTitle>
-            <DialogDescription>{formatDate(day)}</DialogDescription>
+            <DialogTitle className="text-lg">{closure ? `${CLOSURE_LABELS[closure.closure_type ?? 'DAILY'].title} n°${closure.sequence_number}` : 'Caisse du jour'}</DialogTitle>
+            <DialogDescription>{formatClosurePeriod(closure?.closure_type ?? 'DAILY', day)}</DialogDescription>
           </DialogHeader>
           <div ref={ticketRef} className="rounded-lg border">
             <ZTicket report={report} store={store} closure={closure} day={day} />
