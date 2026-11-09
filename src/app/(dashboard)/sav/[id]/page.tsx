@@ -96,7 +96,9 @@ export default async function SavCasePage({ params }: { params: Promise<{ id: st
             {c.brand} {c.model}
           </p>
         </div>
-        <SavDepositSlipButton data={{ ...c, store }} />
+        <SavDepositSlipButton
+          data={{ ...c, store, technician: technicians.find((t) => t.id === c.technician_id) ?? null }}
+        />
       </div>
 
       <ol className="grid grid-cols-6 gap-1">

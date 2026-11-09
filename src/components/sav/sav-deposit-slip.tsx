@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { Printer } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { formatDate, formatDateTime, formatEuro } from '@/lib/format'
+import { formatDate, formatDateTime, formatEuro, SAV_STATUS } from '@/lib/format'
 import { printElement } from '@/lib/print'
 
 export type DepositSlipData = {
@@ -21,6 +21,9 @@ export type DepositSlipData = {
   box_left: boolean
   amount_due: number | null
   is_paid: boolean
+  diagnostic: string | null
+  status: string
+  technician: { full_name: string } | null
   customer: { civility: string | null; first_name: string; last_name: string; phone: string | null; email: string | null } | null
   store: { store_name: string; company_name: string | null; address: string | null; phone: string | null; siret: string | null } | null
 }
@@ -70,10 +73,13 @@ function DepositSlip({ data }: { data: DepositSlipData }) {
     ['Problème signalé', data.declared_problem],
     ['État au dépôt', data.visual_condition],
     ['Accessoires laissés', [data.accessories_left, data.box_left ? 'Boîte' : null].filter(Boolean).join(' · ') || null],
+    ['Travaux à effectuer', data.diagnostic],
+    ['Suivi du dossier', SAV_STATUS[data.status]?.label ?? data.status],
+    ['Horloger', data.technician?.full_name ?? null],
     ['Restitution estimée', data.estimated_date ? formatDate(data.estimated_date) : 'À confirmer après diagnostic'],
     ['Montant du SAV (TTC)', data.amount_due == null ? 'À définir' : formatEuro(data.amount_due)],
     ['Règlement', data.is_paid ? 'Payé' : 'Non payé'],
-  ]
+  ].filter(([, valeur]) => valeur !== null) as Array<[string, string | null]>
 
   return (
     <div className="print-area mx-auto w-full max-w-[80mm] bg-white p-4 font-mono text-[11px] leading-relaxed text-black">
